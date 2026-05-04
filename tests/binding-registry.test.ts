@@ -32,4 +32,25 @@ describe("BindingRegistry", () => {
     })).toMatchObject({ projectPath: dir });
     expect(await registry.findByAlias("local")).toMatchObject({ id: binding.id });
   });
+
+  it("repairs mojibake before persisting project paths", async () => {
+    const dir = await tempDir();
+    const config = testConfig({ dataDir: dir });
+    const registry = new BindingRegistry(
+      config,
+      new JsonFileStore<BindingsDocument>(join(dir, "bindings.json"), emptyBindings)
+    );
+
+    const binding = await registry.bind({
+      conversation: {
+        provider: "discord",
+        workspaceId: "guild:1",
+        conversationId: "channel:2"
+      },
+      projectPath: "E:\\KEHU\\202603鏄庤緣"
+    });
+
+    expect(binding.projectPath).toBe("E:\\KEHU\\202603明辉");
+    expect(binding.projectName).toBe("202603明辉");
+  });
 });

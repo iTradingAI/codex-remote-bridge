@@ -8,6 +8,7 @@ import type {
 import { bindingIdFromConversation, conversationKey } from "../conversation.js";
 import { JsonFileStore } from "../../storage/json-file-store.js";
 import type { BindingsDocument } from "../../storage/documents.js";
+import { repairUtf8DecodedAsGbk } from "../../encoding/mojibake.js";
 
 export interface BindRequest {
   conversation: ConversationRef;
@@ -56,13 +57,14 @@ export class BindingRegistry {
   async bind(request: BindRequest): Promise<ProjectBinding> {
     const now = new Date().toISOString();
     const id = bindingIdFromConversation(request.conversation);
-    const projectName = basename(request.projectPath);
+    const projectPath = repairUtf8DecodedAsGbk(request.projectPath);
+    const projectName = basename(projectPath);
     const nextBinding: ProjectBinding = {
       id,
       provider: request.conversation.provider,
       workspaceId: request.conversation.workspaceId,
       conversationId: request.conversation.conversationId,
-      projectPath: request.projectPath,
+      projectPath,
       projectName,
       aliases: request.aliases ?? [],
       machineId: this.config.machineId,

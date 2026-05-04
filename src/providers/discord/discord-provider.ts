@@ -193,27 +193,37 @@ export class DiscordProviderAdapter {
 
   private async handleMessage(message: Message): Promise<void> {
     if (!this.commandHandler || message.author.bot) return;
-    const conversation = conversationFromMessage(message);
-    const ownership = this.ownership.accepts(conversation);
-    if (!ownership.accepted) {
-      await this.ownershipRejectHandler?.({
+    try {
+      const conversation = conversationFromMessage(message);
+      const ownership = this.ownership.accepts(conversation);
+      if (!ownership.accepted) {
+        await this.ownershipRejectHandler?.({
+          conversation,
+          actor: { id: message.author.id, name: message.author.username },
+          reason: ownership.reason ?? "ownership rejected",
+          action: "message"
+        });
+        return;
+      }
+
+      const outbound = await this.commandHandler({
         conversation,
         actor: { id: message.author.id, name: message.author.username },
-        reason: ownership.reason ?? "ownership rejected",
-        action: "message"
+        command: "send",
+        args: { text: message.content },
+        rawText: message.content,
+        messageId: message.id
       });
-      return;
+      await message.reply(formatOutbound(outbound));
+    } catch (error) {
+      await message.reply(
+        formatOutbound({
+          kind: "error",
+          title: "Message Failed",
+          text: (error as Error).message
+        })
+      );
     }
-
-    const outbound = await this.commandHandler({
-      conversation,
-      actor: { id: message.author.id, name: message.author.username },
-      command: "send",
-      args: { text: message.content },
-      rawText: message.content,
-      messageId: message.id
-    });
-    await message.reply(formatOutbound(outbound));
   }
 
   private commandFromInteraction(interaction: ChatInputCommandInteraction): InboundCommand {

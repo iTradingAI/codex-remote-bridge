@@ -1,5 +1,6 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
+import { repairUtf8DecodedAsGbk } from "../../encoding/mojibake.js";
 
 export interface PathGuardResult {
   allowed: boolean;
@@ -11,23 +12,25 @@ export class ProjectPathGuard {
   constructor(private readonly allowlist: string[]) {}
 
   async validate(projectPath: string): Promise<PathGuardResult> {
-    if (!isAbsolute(projectPath)) {
+    const repairedProjectPath = repairUtf8DecodedAsGbk(projectPath);
+    if (!isAbsolute(repairedProjectPath)) {
       return { allowed: false, reason: "Project path must be absolute" };
     }
 
     let resolvedPath: string;
     try {
-      resolvedPath = await realpath(projectPath);
+      resolvedPath = repairUtf8DecodedAsGbk(await realpath(repairedProjectPath));
     } catch {
       return { allowed: false, reason: "Project path does not exist" };
     }
 
     const allowedRoots = await Promise.all(
       this.allowlist.map(async (root) => {
+        const repairedRoot = repairUtf8DecodedAsGbk(root);
         try {
-          return normalizePath(await realpath(root));
+          return normalizePath(await realpath(repairedRoot));
         } catch {
-          return normalizePath(resolve(root));
+          return normalizePath(resolve(repairedRoot));
         }
       })
     );
@@ -50,7 +53,7 @@ export class ProjectPathGuard {
 }
 
 export function normalizePath(value: string): string {
-  return value.replace(/\\/g, "/").replace(/\/+$/g, "").toLowerCase();
+  return repairUtf8DecodedAsGbk(value).replace(/\\/g, "/").replace(/\/+$/g, "").toLowerCase();
 }
 
 function isDangerousRoot(value: string): boolean {
