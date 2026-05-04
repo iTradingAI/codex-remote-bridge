@@ -45,3 +45,9 @@ For multiple physical machines:
 ```
 
 Each Bridge config should include only the thread or channel it owns.
+
+## Documentation
+
+- [Discord setup](docs/discord-setup.md)
+- [Deployment notes](docs/deployment.md)
+- [Delivery guide](docs/delivery-guide.md)
