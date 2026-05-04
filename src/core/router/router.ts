@@ -250,10 +250,17 @@ export class CommandRouter {
     }
 
     const session = await this.runtime.ensureSession(binding);
-    await this.runtime.send(session, text);
-    const recent = await this.runtime.readRecent(session, 40).catch(() => "");
+    const recent = await this.runtime.sendAndWaitForOutput(session, text, {
+      timeoutMs: 12000,
+      pollMs: 1000,
+      lines: 80
+    });
     await this.auditCommand(command, true, "sent text to codex", binding, text);
-    return { kind: "summary", title: "Sent to Codex", text: recent || "Message sent." };
+    return {
+      kind: "summary",
+      title: recent ? "Codex Output" : "Sent to Codex",
+      text: recent || "Message sent. No Codex output was captured yet."
+    };
   }
 
   private async projects(command: InboundCommand): Promise<OutboundMessage> {

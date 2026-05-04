@@ -10,6 +10,7 @@ import { tempDir, testConfig } from "./helpers.js";
 class FakeRunner implements CommandRunner {
   calls: Array<{ file: string; args: string[] }> = [];
   sessionExists = false;
+  paneOutputs = ["recent output\n"];
 
   async run(file: string, args: string[]): Promise<CommandResult> {
     this.calls.push({ file, args });
@@ -25,7 +26,7 @@ class FakeRunner implements CommandRunner {
       return { exitCode: 0, stdout: "", stderr: "" };
     }
     if (text.includes("capture-pane")) {
-      return { exitCode: 0, stdout: "recent output\n", stderr: "" };
+      return { exitCode: 0, stdout: this.paneOutputs.shift() ?? "recent output\n", stderr: "" };
     }
     return { exitCode: 0, stdout: "", stderr: "" };
   }
@@ -88,6 +89,31 @@ describe("CodexTmuxRuntime", () => {
     expect(bufferName).toMatch(/^codex-channel-codex-test-/);
     expect(argAfter(pasteBuffer?.args ?? [], "-b")).toBe(bufferName);
     expect(argAfter(deleteBuffer?.args ?? [], "-b")).toBe(bufferName);
+  });
+
+  it("waits for pane output after sending text", async () => {
+    const dir = await tempDir();
+    const runner = new FakeRunner();
+    runner.paneOutputs = ["before\n", "hello\n", "hello\nCodex response\n"];
+    const runtime = new CodexTmuxRuntime(
+      testConfig({ dataDir: dir }),
+      new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions),
+      runner
+    );
+
+    const output = await runtime.sendAndWaitForOutput(
+      {
+        bindingId: "binding-1",
+        machineId: "test-machine",
+        projectPath: dir,
+        tmuxSession: "codex-test",
+        lastSeenAt: new Date().toISOString()
+      },
+      "hello",
+      { timeoutMs: 3000, pollMs: 1 }
+    );
+
+    expect(output).toContain("Codex response");
   });
 });
 

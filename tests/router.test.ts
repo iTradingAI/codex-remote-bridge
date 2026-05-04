@@ -231,6 +231,7 @@ function fakeRuntime(): CodexTmuxRuntime {
       throw new Error("should not be called");
     },
     send: async () => undefined,
+    sendAndWaitForOutput: async () => "codex replied",
     readRecent: async () => "recent pane output",
     discoverExisting: async () => ({
       bindingId: "binding-1",

@@ -96,6 +96,30 @@ export class CodexTmuxRuntime {
     }
   }
 
+  async sendAndWaitForOutput(
+    session: RuntimeSession,
+    text: string,
+    options: { timeoutMs?: number; pollMs?: number; lines?: number } = {}
+  ): Promise<string> {
+    const before = await this.readRecent(session, options.lines ?? 80).catch(() => "");
+    await this.send(session, text);
+
+    const timeoutMs = options.timeoutMs ?? 12000;
+    const pollMs = options.pollMs ?? 1000;
+    const deadline = Date.now() + timeoutMs;
+    let latest = "";
+
+    while (Date.now() < deadline) {
+      await sleep(pollMs);
+      latest = await this.readRecent(session, options.lines ?? 80).catch(() => latest);
+      if (latest && latest !== before && !isOnlyEcho(latest, before, text)) {
+        return latest;
+      }
+    }
+
+    return latest || before;
+  }
+
   async readRecent(session: RuntimeSession, lines = 80): Promise<string> {
     const result = await this.runBuilt(this.builder.capturePane(session.tmuxSession, lines));
     if (result.exitCode !== 0) {
@@ -149,4 +173,21 @@ export class CodexTmuxRuntime {
   private runBuilt(command: { file: string; args: string[]; cwd?: string }) {
     return this.runner.run(command.file, command.args, { cwd: command.cwd });
   }
+}
+
+function isOnlyEcho(latest: string, before: string, text: string): boolean {
+  const added = latest.slice(commonPrefixLength(before, latest)).trim();
+  return added === text.trim();
+}
+
+function commonPrefixLength(left: string, right: string): number {
+  let index = 0;
+  while (index < left.length && index < right.length && left[index] === right[index]) {
+    index += 1;
+  }
+  return index;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
