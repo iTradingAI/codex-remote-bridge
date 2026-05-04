@@ -4,6 +4,8 @@ import { hostname, platform, userInfo } from "node:os";
 import { dirname } from "node:path";
 import { createInterface, type Interface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { isEnvVarName, looksLikeDiscordToken, upsertLocalEnvValue } from "./env.js";
+import { runHealth, runRegisterCommands, runStart } from "./operations.js";
 
 const CONFIRMATION_KEYWORDS = ["commit", "push", "merge", "delete", "deploy", "reset"];
 
@@ -12,6 +14,7 @@ export interface SetupAnswers {
   dataDir: string;
   logDir: string;
   tokenEnv: string;
+  botToken?: string;
   applicationId: string;
   guildId: string;
   channelId: string;
@@ -30,6 +33,8 @@ export interface SetupOptions {
   outputPath: string;
   force: boolean;
   answersPath?: string;
+  postSetup?: boolean;
+  startAfterSetup?: boolean;
 }
 
 export interface GeneratedSetupConfig {
@@ -67,6 +72,7 @@ export async function runSetupWizard(options: SetupOptions): Promise<void> {
   if (options.answersPath) {
     await writeSetupConfig(options, await readAnswersFile(options.answersPath));
     output.write(`Wrote ${options.outputPath}\n`);
+    await runPostSetup(options);
     return;
   }
 
@@ -91,7 +97,19 @@ export async function runSetupWizard(options: SetupOptions): Promise<void> {
     const machineId = await askString(rl, "Machine ID", defaults.machineId);
     const dataDir = await askString(rl, "Data directory", defaults.dataDir);
     const logDir = await askString(rl, "Log directory", defaults.logDir);
-    const tokenEnv = await askString(rl, "Discord bot token env var", defaults.tokenEnv);
+    const tokenInput = await askString(
+      rl,
+      "Discord bot token env var name (name only; token value is asked next)",
+      defaults.tokenEnv
+    );
+    const tokenEnv = normalizeTokenEnvInput(tokenInput, defaults.tokenEnv);
+    const pastedToken = looksLikeDiscordToken(tokenInput) ? tokenInput.trim() : undefined;
+    const botToken =
+      pastedToken ??
+      (await askOptional(
+        rl,
+        `Discord bot token value for ${tokenEnv} (blank to use existing env/.env.local)`
+      ));
     const applicationId = await askRequired(rl, "Discord application ID");
     const guildId = await askRequired(rl, "Discord guild/server ID");
     const channelId = await askRequired(rl, "Discord channel ID");
@@ -119,6 +137,7 @@ export async function runSetupWizard(options: SetupOptions): Promise<void> {
       dataDir,
       logDir,
       tokenEnv,
+      botToken,
       applicationId,
       guildId,
       channelId,
@@ -138,14 +157,7 @@ export async function runSetupWizard(options: SetupOptions): Promise<void> {
     await writeSetupConfig({ ...options, force: true }, answers);
 
     output.write(`\nWrote ${options.outputPath}\n\n`);
-    output.write("Next commands:\n");
-    output.write(`  npm run build\n`);
-    output.write(`  node dist/src/cli/index.js health --config ${options.outputPath}\n`);
-    output.write(`  node dist/src/cli/index.js register-commands --config ${options.outputPath}\n`);
-    output.write(`  node dist/src/cli/index.js start --config ${options.outputPath}\n\n`);
-    output.write(`Set ${answers.tokenEnv} before register/start. Example:\n`);
-    output.write(`  PowerShell: $env:${answers.tokenEnv} = "your-token"\n`);
-    output.write(`  bash/zsh: export ${answers.tokenEnv}="your-token"\n`);
+    await runPostSetup(options);
   } finally {
     rl.close();
   }
@@ -193,6 +205,30 @@ async function writeSetupConfig(options: SetupOptions, answers: SetupAnswers): P
   const config = buildSetupConfig(answers);
   await mkdir(dirname(options.outputPath), { recursive: true });
   await writeFile(options.outputPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  if (answers.botToken) {
+    await upsertLocalEnvValue(answers.tokenEnv, answers.botToken);
+    output.write(`Stored Discord bot token in .env.local as ${answers.tokenEnv}.\n`);
+  }
+}
+
+async function runPostSetup(options: SetupOptions): Promise<void> {
+  if (options.postSetup === false) {
+    output.write(`Post-setup automation skipped. Use --config ${options.outputPath} for later commands.\n`);
+    return;
+  }
+
+  output.write("Running health check...\n");
+  await runHealth(options.outputPath);
+  output.write("Registering Discord slash commands...\n");
+  await runRegisterCommands(options.outputPath);
+
+  if (options.startAfterSetup === false) {
+    output.write(`Bridge is configured. Start later with: node dist/src/cli/index.js start --config ${options.outputPath}\n`);
+    return;
+  }
+
+  output.write("Starting bridge. Leave this terminal open.\n");
+  await runStart(options.outputPath);
 }
 
 async function readAnswersFile(path: string): Promise<SetupAnswers> {
@@ -201,11 +237,15 @@ async function readAnswersFile(path: string): Promise<SetupAnswers> {
 
 export function parseSetupAnswers(content: string): SetupAnswers {
   const raw = JSON.parse(stripBom(content)) as Partial<SetupAnswers>;
+  const tokenEnvInput = raw.tokenEnv || "DISCORD_BOT_TOKEN";
   const answers: SetupAnswers = {
     machineId: requiredString(raw.machineId, "machineId"),
     dataDir: requiredString(raw.dataDir, "dataDir"),
     logDir: requiredString(raw.logDir, "logDir"),
-    tokenEnv: raw.tokenEnv || "DISCORD_BOT_TOKEN",
+    tokenEnv: normalizeTokenEnvInput(tokenEnvInput, "DISCORD_BOT_TOKEN"),
+    botToken:
+      optionalString(raw.botToken, "botToken") ??
+      (looksLikeDiscordToken(tokenEnvInput) ? tokenEnvInput.trim() : undefined),
     applicationId: requiredString(raw.applicationId, "applicationId"),
     guildId: requiredString(raw.guildId, "guildId"),
     channelId: requiredString(raw.channelId, "channelId"),
@@ -220,6 +260,22 @@ export function parseSetupAnswers(content: string): SetupAnswers {
     codexCommand: raw.codexCommand || "codex"
   };
   return answers;
+}
+
+function normalizeTokenEnvInput(value: string, fallback: string): string {
+  const trimmed = value.trim();
+  if (looksLikeDiscordToken(trimmed)) {
+    output.write(
+      `Detected a token value in the env var name field; using ${fallback} as the env var name instead.\n`
+    );
+    return fallback;
+  }
+  if (!isEnvVarName(trimmed)) {
+    throw new Error(
+      `Discord bot token env var name must look like ${fallback}, not a token or arbitrary text.`
+    );
+  }
+  return trimmed;
 }
 
 function requiredString(value: unknown, name: string): string {

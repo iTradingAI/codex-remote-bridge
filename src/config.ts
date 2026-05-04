@@ -44,7 +44,7 @@ function unknownArray(value: unknown, name: string): unknown[] {
 
 export async function loadBridgeConfig(configPath: string): Promise<BridgeConfig> {
   const absolutePath = resolve(configPath);
-  const raw = JSON.parse(await readFile(absolutePath, "utf8")) as unknown;
+  const raw = JSON.parse(stripBom(await readFile(absolutePath, "utf8"))) as unknown;
   const root = asRecord(raw, "config");
   const discord = asRecord(root.discord, "discord");
   const runtime = asRecord(root.runtime, "runtime");
@@ -95,4 +95,8 @@ export async function loadBridgeConfig(configPath: string): Promise<BridgeConfig
       )
     }
   };
+}
+
+function stripBom(value: string): string {
+  return value.charCodeAt(0) === 0xfeff ? value.slice(1) : value;
 }

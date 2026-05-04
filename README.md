@@ -27,15 +27,15 @@ node dist/src/cli/index.js setup --output config/bridge.local.json
 
 The wizard asks for the machine ID, Discord application/server/channel or thread IDs, authorized Discord user IDs, project path allowlist, and Windows WSL/tmux settings when applicable. It writes a local config that is ignored by git.
 
+It also asks for the Discord Bot token value and stores it in `.env.local` as `DISCORD_BOT_TOKEN`; the token value is not written into `config/bridge.local.json`. After setup, the CLI automatically runs the health check, registers slash commands, and starts the bridge. Use `--no-start` if you only want setup plus registration.
+
 For scripted machine setup, pass an answers file:
 
 ```bash
-node dist/src/cli/index.js setup --answers setup-answers.json --output config/bridge.local.json
+node dist/src/cli/index.js setup --answers setup-answers.json --output config/bridge.local.json --no-start
 ```
 
-3. Set `DISCORD_BOT_TOKEN` in the local environment.
-
-4. Run:
+3. For later manual operation:
 
 ```bash
 node dist/src/cli/index.js health --config config/bridge.local.json

@@ -51,6 +51,17 @@ describe("setup config generation", () => {
     expect(loaded.runtime.windows.useWsl).toBe(true);
   });
 
+  it("loads PowerShell-written bridge configs with a UTF-8 BOM", async () => {
+    const dir = await tempDir();
+    const configPath = join(dir, "bridge.local.json");
+    await writeFile(configPath, `\ufeff${JSON.stringify(buildSetupConfig(answers), null, 2)}`, "utf8");
+
+    await expect(loadBridgeConfig(configPath)).resolves.toMatchObject({
+      machineId: "win-main",
+      discord: { tokenEnv: "DISCORD_BOT_TOKEN" }
+    });
+  });
+
   it("keeps channel-only bindings valid when no thread is provided", () => {
     expect(buildConversationId("123")).toBe("channel:123");
     expect(buildConversationId("channel:123", "")).toBe("channel:123");
@@ -74,5 +85,12 @@ describe("setup config generation", () => {
       applicationId: "app-123",
       wslCommand: "wsl.exe"
     });
+  });
+
+  it("keeps token values out of generated bridge config", () => {
+    const config = buildSetupConfig({ ...answers, botToken: "secret-token" });
+
+    expect(JSON.stringify(config)).not.toContain("secret-token");
+    expect(config.discord.token_env).toBe("DISCORD_BOT_TOKEN");
   });
 });

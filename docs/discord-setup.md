@@ -19,7 +19,7 @@ Gateway intents:
 
 Required values for local config:
 
-- Discord Bot Token, stored in `DISCORD_BOT_TOKEN`
+- Discord Bot Token, stored in `.env.local` or the process environment as `DISCORD_BOT_TOKEN`
 - Application ID
 - Guild ID for development slash command registration. It is required only when running `codex-channel register-commands`; normal `start` does not register commands.
 - Target channel or thread IDs
@@ -30,6 +30,8 @@ The setup wizard collects these values and writes `config/bridge.local.json`:
 ```bash
 node dist/src/cli/index.js setup --output config/bridge.local.json
 ```
+
+Paste the Bot Token only when the wizard asks for the token value. Do not paste it into the env var name field; the env var name should normally stay `DISCORD_BOT_TOKEN`.
 
 Binding is scoped to a Discord conversation:
 

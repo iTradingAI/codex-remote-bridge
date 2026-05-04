@@ -91,13 +91,18 @@ The wizard creates the local config and asks for:
 - Project path allowlist
 - Whether ordinary Discord text can inject into Codex; keep this disabled for normal handoff
 - Windows WSL settings, when running on Windows
+- Discord Bot token value, stored in `.env.local` as `DISCORD_BOT_TOKEN`
+
+The token value is never written into `config/bridge.local.json`. That config stores only the environment variable name.
+
+After setup, the CLI automatically runs health, registers slash commands, and starts the bridge. Use `--no-start` to stop after setup and command registration, or `--no-post-setup` to write files only.
 
 Use `--force` to overwrite an existing local config.
 
 For scripted installs, provide an answers file instead of using the prompts:
 
 ```bash
-node dist/src/cli/index.js setup --answers setup-answers.json --output config/bridge.local.json
+node dist/src/cli/index.js setup --answers setup-answers.json --output config/bridge.local.json --no-start
 ```
 
 Example answer shape:
@@ -108,6 +113,7 @@ Example answer shape:
   "dataDir": "./data",
   "logDir": "./logs",
   "tokenEnv": "DISCORD_BOT_TOKEN",
+  "botToken": "replace-with-real-token",
   "applicationId": "123",
   "guildId": "456",
   "channelId": "789",
@@ -122,31 +128,19 @@ Example answer shape:
 }
 ```
 
-5. Set the bot token in the environment:
-
-```bash
-DISCORD_BOT_TOKEN=replace-with-real-token
-```
-
-PowerShell example:
-
-```powershell
-$env:DISCORD_BOT_TOKEN = "replace-with-real-token"
-```
-
-6. Check local health:
+5. Check local health:
 
 ```bash
 node dist/src/cli/index.js health --config config/bridge.local.json
 ```
 
-7. Register Discord slash commands:
+6. Register Discord slash commands:
 
 ```bash
 node dist/src/cli/index.js register-commands --config config/bridge.local.json
 ```
 
-8. Start the Bridge:
+7. Start the Bridge:
 
 ```bash
 node dist/src/cli/index.js start --config config/bridge.local.json
@@ -207,7 +201,7 @@ Unsupported or verbose hook events are audited but not forwarded by default.
 - Keep `policy.allow_direct_injection` disabled unless the operator explicitly wants ordinary Discord text to enter Codex.
 - High-risk sends are confirmation-gated and the full pending prompt text is kept only in memory, not written into `pending-approvals.json`.
 - Only one Bridge process should use a given `data_dir`; the process lock prevents accidental same-directory reuse.
-- Secrets live in environment variables or private local config, never in git.
+- Secrets live in `.env.local` or process environment variables, never in git or bridge config.
 
 ## Handoff Checklist
 
