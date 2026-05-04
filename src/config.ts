@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { BridgeConfig } from "./types.js";
+import { repairUtf8DecodedAsGbkList } from "./encoding/mojibake.js";
 
 type RawRecord = Record<string, unknown>;
 
@@ -70,7 +71,9 @@ export async function loadBridgeConfig(configPath: string): Promise<BridgeConfig
           };
         })
     },
-    pathAllowlist: stringArray(root.path_allowlist ?? root.pathAllowlist ?? [], "path_allowlist"),
+    pathAllowlist: repairUtf8DecodedAsGbkList(
+      stringArray(root.path_allowlist ?? root.pathAllowlist ?? [], "path_allowlist")
+    ),
     runtime: {
       kind: "codex-tmux",
       tmuxCommand: stringField(runtime, "tmux_command", "tmuxCommand", "tmux"),

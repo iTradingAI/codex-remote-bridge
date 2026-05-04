@@ -93,4 +93,13 @@ describe("setup config generation", () => {
     expect(JSON.stringify(config)).not.toContain("secret-token");
     expect(config.discord.token_env).toBe("DISCORD_BOT_TOKEN");
   });
+
+  it("repairs mojibake in setup path allowlists before writing config", () => {
+    const config = buildSetupConfig({
+      ...answers,
+      pathAllowlist: ["E:\\KEHU\\202603鏄庤緣"]
+    });
+
+    expect(config.path_allowlist).toEqual(["E:\\KEHU\\202603明辉"]);
+  });
 });

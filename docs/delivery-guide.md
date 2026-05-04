@@ -95,6 +95,8 @@ The wizard creates the local config and asks for:
 
 The token value is never written into `config/bridge.local.json`. That config stores only the environment variable name.
 
+On Windows, setup repairs common Chinese path mojibake before writing config. For example, `E:\KEHU\202603鏄庤緣` is saved as `E:\KEHU\202603明辉`.
+
 After setup, the CLI automatically runs health, registers slash commands, and starts the bridge. Use `--no-start` to stop after setup and command registration, or `--no-post-setup` to write files only.
 
 Use `--force` to overwrite an existing local config.

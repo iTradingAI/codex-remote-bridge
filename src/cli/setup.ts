@@ -6,6 +6,7 @@ import { createInterface, type Interface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { isEnvVarName, looksLikeDiscordToken, upsertLocalEnvValue } from "./env.js";
 import { runHealth, runRegisterCommands, runStart } from "./operations.js";
+import { repairUtf8DecodedAsGbkList } from "../encoding/mojibake.js";
 
 const CONFIRMATION_KEYWORDS = ["commit", "push", "merge", "delete", "deploy", "reset"];
 
@@ -179,7 +180,7 @@ export function buildSetupConfig(answers: SetupAnswers): GeneratedSetupConfig {
         }
       ]
     },
-    path_allowlist: answers.pathAllowlist,
+    path_allowlist: repairUtf8DecodedAsGbkList(answers.pathAllowlist),
     runtime: {
       kind: "codex-tmux",
       tmux_command: answers.tmuxCommand,
