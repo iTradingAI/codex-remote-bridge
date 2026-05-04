@@ -20,6 +20,15 @@ export type OwnershipRejectHandler = (event: {
   action: string;
 }) => Promise<void>;
 
+export const MESSAGE_STATUS_REACTIONS = {
+  received: "📥",
+  thinking: "🤔",
+  executing: "⚙️",
+  done: "✅",
+  failed: "❌",
+  rejected: "🚫"
+} as const;
+
 export class DiscordProviderAdapter {
   private readonly client: Client;
   private readonly ownership: DiscordIngressOwnership;
@@ -149,6 +158,7 @@ export class DiscordProviderAdapter {
 
     try {
       if (!this.commandHandler) throw new Error("No command handler registered");
+      await deferInteraction(interaction);
 
       const command = this.commandFromInteraction(interaction);
       const ownership = this.ownership.accepts(command.conversation);
@@ -184,7 +194,11 @@ export class DiscordProviderAdapter {
     message: OutboundMessage
   ): Promise<void> {
     const payload = formatOutbound(message);
-    if (interaction.deferred || interaction.replied) {
+    if (interaction.deferred && !interaction.replied) {
+      await interaction.editReply(payload);
+      return;
+    }
+    if (interaction.replied) {
       await interaction.followUp(payload);
       return;
     }
@@ -194,9 +208,11 @@ export class DiscordProviderAdapter {
   private async handleMessage(message: Message): Promise<void> {
     if (!this.commandHandler || message.author.bot) return;
     try {
+      await reactToMessage(message, MESSAGE_STATUS_REACTIONS.received);
       const conversation = conversationFromMessage(message);
       const ownership = this.ownership.accepts(conversation);
       if (!ownership.accepted) {
+        await reactToMessage(message, MESSAGE_STATUS_REACTIONS.rejected);
         await this.ownershipRejectHandler?.({
           conversation,
           actor: { id: message.author.id, name: message.author.username },
@@ -206,6 +222,8 @@ export class DiscordProviderAdapter {
         return;
       }
 
+      await reactToMessage(message, MESSAGE_STATUS_REACTIONS.thinking);
+      await reactToMessage(message, MESSAGE_STATUS_REACTIONS.executing);
       const outbound = await this.commandHandler({
         conversation,
         actor: { id: message.author.id, name: message.author.username },
@@ -215,7 +233,9 @@ export class DiscordProviderAdapter {
         messageId: message.id
       });
       await message.reply(formatOutbound(outbound));
+      await reactToMessage(message, MESSAGE_STATUS_REACTIONS.done);
     } catch (error) {
+      await reactToMessage(message, MESSAGE_STATUS_REACTIONS.failed);
       await message.reply(
         formatOutbound({
           kind: "error",
@@ -241,6 +261,15 @@ export class DiscordProviderAdapter {
       messageId: interaction.id
     };
   }
+}
+
+async function deferInteraction(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (interaction.deferred || interaction.replied) return;
+  await interaction.deferReply();
+}
+
+async function reactToMessage(message: Message, emoji: string): Promise<void> {
+  await message.react(emoji).catch(() => undefined);
 }
 
 export function discordTargetChannelId(target: ConversationRef): string {

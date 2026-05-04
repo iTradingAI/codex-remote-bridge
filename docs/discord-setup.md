@@ -7,6 +7,7 @@ Minimum permissions:
 - View Channels
 - Send Messages
 - Read Message History
+- Add Reactions, optional but recommended for received/thinking/executing status feedback
 - Use Slash Commands
 - Send Messages in Threads
 - Create Public Threads or Create Private Threads, if the Bridge will create threads later
