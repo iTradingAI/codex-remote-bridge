@@ -1,0 +1,32 @@
+{
+  "machine_id": "win-main",
+  "data_dir": "./data",
+  "log_dir": "./logs",
+  "discord": {
+    "token_env": "DISCORD_BOT_TOKEN",
+    "application_id": "replace-with-application-id",
+    "guild_id": "replace-with-guild-id-for-dev-command-registration",
+    "allowed_scopes": [
+      {
+        "workspace_id": "guild:replace-with-guild-id",
+        "conversation_id": "channel:replace-with-channel-id"
+      }
+    ]
+  },
+  "path_allowlist": ["E:\\Projects", "/srv/projects", "/Users/max/Projects"],
+  "runtime": {
+    "kind": "codex-tmux",
+    "tmux_command": "tmux",
+    "codex_command": "codex",
+    "windows": {
+      "use_wsl": true,
+      "wsl_command": "wsl.exe",
+      "distro": null
+    }
+  },
+  "policy": {
+    "authorized_user_ids": ["replace-with-discord-user-id"],
+    "allow_direct_injection": false,
+    "require_confirmation_for": ["commit", "push", "merge", "delete", "deploy", "reset"]
+  }
+}

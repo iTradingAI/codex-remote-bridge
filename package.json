@@ -1,0 +1,25 @@
+{
+  "name": "codex-channel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Discord-first bridge for Codex CLI sessions over tmux.",
+  "bin": {
+    "codex-channel": "./dist/src/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "npm run typecheck",
+    "test": "vitest run",
+    "test:runtime": "vitest run tests/runtime.test.ts"
+  },
+  "dependencies": {
+    "discord.js": "^14.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.1.0"
+  }
+}

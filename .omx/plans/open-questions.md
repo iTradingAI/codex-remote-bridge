@@ -1,0 +1,4 @@
+- [ ] Confirm the ingress-to-bridge transport choice for implementation: local IPC, HTTP, or queue-backed relay.
+- [ ] Confirm whether macOS smoke validation is required in the first implementation pass or acceptable as Linux-parity code plus deferred host validation.
+- [ ] Confirm the initial allowlist roots and secret file locations for the first deployment.
+- [ ] Confirm whether Discord free-text injection should remain fully disabled in MVP or enabled behind an explicit config flag after Phase 5.

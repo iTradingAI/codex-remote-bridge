@@ -1,0 +1,13 @@
+node_modules/
+dist/
+data/
+logs/
+*.local.json
+.env
+.env.*
+!.env.example
+.omx/logs/
+.omx/state/
+.omx/drafts/
+.omx/metrics.json
+.omx/tmux-hook.json
