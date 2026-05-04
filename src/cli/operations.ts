@@ -97,6 +97,19 @@ export async function runRegisterCommands(configPath: string): Promise<void> {
 export async function runStart(configPath: string): Promise<void> {
   const bridge = await createBridge(configPath);
   const provider = new DiscordProviderAdapter(bridge.config);
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    await provider.destroy();
+    await bridge.release();
+  };
+  process.once("SIGINT", () => {
+    void shutdown().finally(() => process.exit(0));
+  });
+  process.once("SIGTERM", () => {
+    void shutdown().finally(() => process.exit(0));
+  });
   provider.onCommand((inbound) => bridge.router.handle(inbound));
   provider.onOwnershipReject((event) =>
     bridge.audit.append({
@@ -120,4 +133,9 @@ export async function runStart(configPath: string): Promise<void> {
     allowed: true,
     summary: `Logged in as ${session.username ?? "unknown"} (${session.userId ?? "unknown id"})`
   });
+  await waitForever();
+}
+
+function waitForever(): Promise<never> {
+  return new Promise(() => undefined);
 }
