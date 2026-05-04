@@ -82,6 +82,13 @@ export async function runRegisterCommands(configPath: string): Promise<void> {
     const provider = new DiscordProviderAdapter(bridge.config);
     await provider.registerSlashCommands(getDiscordToken(bridge.config));
     console.log("Discord slash commands registered.");
+    await bridge.audit.append({
+      at: new Date().toISOString(),
+      machineId: bridge.config.machineId,
+      action: "discord.register_commands",
+      allowed: true,
+      summary: `Registered guild slash commands for ${bridge.config.discord.guildId ?? "unknown guild"}`
+    });
   } finally {
     await bridge.release();
   }
@@ -102,5 +109,15 @@ export async function runStart(configPath: string): Promise<void> {
       summary: event.reason
     })
   );
-  await provider.start(getDiscordToken(bridge.config));
+  const session = await provider.start(getDiscordToken(bridge.config));
+  console.log(
+    `Discord bridge logged in as ${session.username ?? "unknown"} (${session.userId ?? "unknown id"}).`
+  );
+  await bridge.audit.append({
+    at: new Date().toISOString(),
+    machineId: bridge.config.machineId,
+    action: "discord.start",
+    allowed: true,
+    summary: `Logged in as ${session.username ?? "unknown"} (${session.userId ?? "unknown id"})`
+  });
 }

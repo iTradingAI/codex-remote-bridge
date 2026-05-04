@@ -100,7 +100,7 @@ export class DiscordProviderAdapter {
     );
   }
 
-  async start(token: string): Promise<void> {
+  async start(token: string): Promise<{ userId?: string; username?: string }> {
     this.client.on("interactionCreate", (interaction) => {
       void this.handleInteraction(interaction);
     });
@@ -110,6 +110,14 @@ export class DiscordProviderAdapter {
       });
     }
     await this.client.login(token);
+    this.client.user?.setPresence({
+      status: "online",
+      activities: [{ name: "Codex Channel" }]
+    });
+    return {
+      userId: this.client.user?.id,
+      username: this.client.user?.username
+    };
   }
 
   async probeConnection(token: string): Promise<{ connected: boolean; userId?: string; error?: string }> {
@@ -138,22 +146,49 @@ export class DiscordProviderAdapter {
 
   private async handleInteraction(interaction: Interaction): Promise<void> {
     if (!interaction.isChatInputCommand() || interaction.commandName !== "codex") return;
-    if (!this.commandHandler) throw new Error("No command handler registered");
 
-    const command = this.commandFromInteraction(interaction);
-    const ownership = this.ownership.accepts(command.conversation);
-    if (!ownership.accepted) {
-      await this.ownershipRejectHandler?.({
-        conversation: command.conversation,
-        actor: command.actor,
-        reason: ownership.reason ?? "ownership rejected",
-        action: command.command
+    try {
+      if (!this.commandHandler) throw new Error("No command handler registered");
+
+      const command = this.commandFromInteraction(interaction);
+      const ownership = this.ownership.accepts(command.conversation);
+      if (!ownership.accepted) {
+        const reason = ownership.reason ?? "ownership rejected";
+        await this.ownershipRejectHandler?.({
+          conversation: command.conversation,
+          actor: command.actor,
+          reason,
+          action: command.command
+        });
+        await this.replyToInteraction(interaction, {
+          kind: "error",
+          title: "Conversation Not Owned",
+          text: `This bridge is not configured for this Discord channel/thread. ${reason}`
+        });
+        return;
+      }
+
+      const outbound = await this.commandHandler(command);
+      await this.replyToInteraction(interaction, outbound);
+    } catch (error) {
+      await this.replyToInteraction(interaction, {
+        kind: "error",
+        title: "Command Failed",
+        text: (error as Error).message
       });
+    }
+  }
+
+  private async replyToInteraction(
+    interaction: ChatInputCommandInteraction,
+    message: OutboundMessage
+  ): Promise<void> {
+    const payload = formatOutbound(message);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.followUp(payload);
       return;
     }
-
-    const outbound = await this.commandHandler(command);
-    await interaction.reply(formatOutbound(outbound));
+    await interaction.reply(payload);
   }
 
   private async handleMessage(message: Message): Promise<void> {
