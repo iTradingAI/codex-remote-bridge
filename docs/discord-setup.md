@@ -25,6 +25,12 @@ Required values for local config:
 - Target channel or thread IDs
 - Authorized Discord user IDs
 
+The setup wizard collects these values and writes `config/bridge.local.json`:
+
+```bash
+node dist/src/cli/index.js setup --output config/bridge.local.json
+```
+
 Binding is scoped to a Discord conversation:
 
 ```json

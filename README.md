@@ -12,14 +12,32 @@ One Discord Bot can serve multiple physical machines. Each machine runs its own 
 
 ## Quick Start
 
-1. Copy `config/bridge.example.json` to a local config file outside source control or named `config/bridge.local.json`.
-2. Set `DISCORD_BOT_TOKEN` in the local environment.
-3. Fill in `machine_id`, Discord IDs, `allowed_scopes`, `path_allowlist`, and authorized Discord user IDs.
-4. Run:
+1. Install dependencies and build:
 
 ```bash
 npm install
 npm run build
+```
+
+2. Run the local setup wizard:
+
+```bash
+node dist/src/cli/index.js setup --output config/bridge.local.json
+```
+
+The wizard asks for the machine ID, Discord application/server/channel or thread IDs, authorized Discord user IDs, project path allowlist, and Windows WSL/tmux settings when applicable. It writes a local config that is ignored by git.
+
+For scripted machine setup, pass an answers file:
+
+```bash
+node dist/src/cli/index.js setup --answers setup-answers.json --output config/bridge.local.json
+```
+
+3. Set `DISCORD_BOT_TOKEN` in the local environment.
+
+4. Run:
+
+```bash
 node dist/src/cli/index.js health --config config/bridge.local.json
 node dist/src/cli/index.js register-commands --config config/bridge.local.json
 node dist/src/cli/index.js start --config config/bridge.local.json

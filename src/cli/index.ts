@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createBridge } from "../app.js";
+import { runSetupWizard } from "./setup.js";
 import { readHookEventFromFile, readHookEventFromStdin, routeHookEvent } from "../hooks/hook-ingress.js";
 import { DiscordProviderAdapter } from "../providers/discord/discord-provider.js";
 
@@ -116,8 +117,15 @@ if (command === "health") {
   } finally {
     await bridge.release();
   }
+} else if (command === "setup") {
+  await runSetupWizard({
+    outputPath: readFlag(args, "--output") ?? "config/bridge.local.json",
+    force: hasFlag(args, "--force"),
+    answersPath: readFlag(args, "--answers")
+  });
 } else {
   console.log(`Usage:
+  codex-channel setup [--output config/bridge.local.json] [--force] [--answers setup-answers.json]
   codex-channel health --config config/bridge.local.json
   codex-channel register-commands --config config/bridge.local.json
   codex-channel hook --config config/bridge.local.json [--event-file event.json]
@@ -128,4 +136,8 @@ function readFlag(values: string[], name: string): string | undefined {
   const index = values.indexOf(name);
   if (index < 0) return undefined;
   return values[index + 1];
+}
+
+function hasFlag(values: string[], name: string): boolean {
+  return values.includes(name);
 }

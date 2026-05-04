@@ -11,7 +11,13 @@ codex --version
 tmux -V
 ```
 
-From Windows, the Bridge runs commands through `wsl.exe tmux ...`. Configure:
+From Windows, the Bridge runs commands through `wsl.exe tmux ...`. The setup wizard asks whether to use WSL and writes the runtime settings:
+
+```powershell
+node dist/src/cli/index.js setup --output config/bridge.local.json
+```
+
+The generated runtime block should look like:
 
 ```json
 {
@@ -43,6 +49,12 @@ codex --version
 tmux -V
 ```
 
+Create the local bridge config:
+
+```bash
+node dist/src/cli/index.js setup --output config/bridge.local.json
+```
+
 Use `systemd` for auto-start once the bridge config is stable.
 
 For hook ingress:
@@ -59,6 +71,12 @@ Install Codex CLI and tmux locally, for example with Homebrew for tmux:
 brew install tmux
 codex --version
 tmux -V
+```
+
+Create the local bridge config:
+
+```bash
+node dist/src/cli/index.js setup --output config/bridge.local.json
 ```
 
 Use `launchd` for auto-start after smoke testing manually.

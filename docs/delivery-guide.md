@@ -75,23 +75,54 @@ npm test
 npm run build
 ```
 
-4. Create a local config:
+4. Run the setup wizard:
 
-```text
-config/bridge.example.json -> config/bridge.local.json
+```bash
+node dist/src/cli/index.js setup --output config/bridge.local.json
 ```
 
-5. Fill in `config/bridge.local.json`:
+The wizard creates the local config and asks for:
 
 - `machine_id`: unique physical machine name, for example `win-main`, `linux-cloud`, or `macbook`
-- `discord.application_id`
-- `discord.guild_id`, needed for `register-commands`
-- `discord.allowed_scopes`: the Discord channel/thread this machine is allowed to handle
-- `path_allowlist`: directories that can be bound to projects
-- `policy.authorized_user_ids`: Discord user IDs allowed to control Codex
-- `policy.allow_direct_injection`: keep `false` unless ordinary text messages should go directly to Codex
+- Discord application ID
+- Discord guild/server ID, needed for `register-commands`
+- Discord channel ID and optional thread ID owned by this machine
+- Authorized Discord user IDs
+- Project path allowlist
+- Whether ordinary Discord text can inject into Codex; keep this disabled for normal handoff
+- Windows WSL settings, when running on Windows
 
-6. Set the bot token in the environment:
+Use `--force` to overwrite an existing local config.
+
+For scripted installs, provide an answers file instead of using the prompts:
+
+```bash
+node dist/src/cli/index.js setup --answers setup-answers.json --output config/bridge.local.json
+```
+
+Example answer shape:
+
+```json
+{
+  "machineId": "win-main",
+  "dataDir": "./data",
+  "logDir": "./logs",
+  "tokenEnv": "DISCORD_BOT_TOKEN",
+  "applicationId": "123",
+  "guildId": "456",
+  "channelId": "789",
+  "threadId": "101112",
+  "authorizedUserIds": ["111"],
+  "pathAllowlist": ["E:\\Projects"],
+  "allowDirectInjection": false,
+  "useWsl": true,
+  "wslCommand": "wsl.exe",
+  "tmuxCommand": "tmux",
+  "codexCommand": "codex"
+}
+```
+
+5. Set the bot token in the environment:
 
 ```bash
 DISCORD_BOT_TOKEN=replace-with-real-token
@@ -103,19 +134,19 @@ PowerShell example:
 $env:DISCORD_BOT_TOKEN = "replace-with-real-token"
 ```
 
-7. Check local health:
+6. Check local health:
 
 ```bash
 node dist/src/cli/index.js health --config config/bridge.local.json
 ```
 
-8. Register Discord slash commands:
+7. Register Discord slash commands:
 
 ```bash
 node dist/src/cli/index.js register-commands --config config/bridge.local.json
 ```
 
-9. Start the Bridge:
+8. Start the Bridge:
 
 ```bash
 node dist/src/cli/index.js start --config config/bridge.local.json
@@ -191,4 +222,3 @@ Unsupported or verbose hook events are audited but not forwarded by default.
 - [ ] `/codex bind` + `/codex confirm` works
 - [ ] `/codex start` creates or reuses a tmux session
 - [ ] `/codex send` reaches the correct tmux pane
-
