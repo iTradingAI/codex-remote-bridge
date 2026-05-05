@@ -126,7 +126,7 @@ export async function runStart(configPath: string): Promise<void> {
   process.once("SIGTERM", () => {
     void shutdown().finally(() => process.exit(0));
   });
-  provider.onCommand((inbound) => bridge.router.handle(inbound));
+  provider.onCommand((inbound, sink) => bridge.router.handle(inbound, sink));
   provider.onOwnershipReject((event) =>
     bridge.audit.append({
       at: new Date().toISOString(),

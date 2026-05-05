@@ -11,6 +11,7 @@ import type {
   ConversationRef,
   InboundCommand,
   OutboundMessage,
+  OutboundSink,
   ProjectBinding,
   RuntimeSession
 } from "../../types.js";
@@ -30,6 +31,7 @@ type ApprovalPayload =
 
 export class CommandRouter {
   private readonly sensitiveSendText = new Map<string, string>();
+  private readonly bindingQueues = new Map<string, Promise<void>>();
 
   constructor(
     private readonly config: BridgeConfig,
@@ -42,7 +44,7 @@ export class CommandRouter {
     private readonly audit: AuditLog
   ) {}
 
-  async handle(command: InboundCommand): Promise<OutboundMessage> {
+  async handle(command: InboundCommand, sink?: OutboundSink): Promise<OutboundMessage> {
     try {
       switch (command.command) {
         case "bind":
@@ -61,7 +63,7 @@ export class CommandRouter {
         case "unpin":
           return await this.unpin(command);
         case "send":
-          return await this.send(command);
+          return await this.send(command, sink);
         case "projects":
           return await this.projects(command);
         default:
@@ -145,10 +147,12 @@ export class CommandRouter {
     }
     this.sensitiveSendText.delete(approval.id);
     try {
-      await this.executionStates.set(binding, "executing", "Confirmed high-risk send.");
-      const session = await this.runtime.ensureSession(binding);
-      await this.runtime.send(session, text);
-      await this.executionStates.set(binding, "completed", "Confirmed text was sent.");
+      await this.runForBinding(binding, async () => {
+        await this.executionStates.set(binding, "executing", "Confirmed high-risk send.");
+        const session = await this.runtime.ensureSession(binding);
+        await this.runtime.send(session, text);
+        await this.executionStates.set(binding, "completed", "Confirmed text was sent.");
+      });
     } catch (error) {
       await this.executionStates.set(binding, "failed", (error as Error).message);
       throw error;
@@ -301,7 +305,7 @@ export class CommandRouter {
     };
   }
 
-  private async send(command: InboundCommand): Promise<OutboundMessage> {
+  private async send(command: InboundCommand, sink?: OutboundSink): Promise<OutboundMessage> {
     const binding = await this.requireBinding(command);
     const text = stringArg(command, "text");
     if (command.rawText && !this.policy.canDirectInject(binding)) {
@@ -347,12 +351,33 @@ export class CommandRouter {
     let recent = "";
     try {
       await this.executionStates.set(binding, "queued", "Send accepted for Codex.");
-      await this.executionStates.set(binding, "executing", "Sending text to Codex.");
-      const session = await this.runtime.ensureSession(binding);
-      recent = await this.runtime.sendAndWaitForOutput(session, text, {
-        timeoutMs: 120000,
-        pollMs: 1000,
-        lines: 200
+      if (this.bindingQueues.has(binding.id)) {
+        await sink?.update({
+          kind: "status",
+          title: "Queued",
+          text: "This project is busy. Your message is queued and will run after the current Codex task finishes."
+        });
+      }
+      recent = await this.runForBinding(binding, async () => {
+        await this.executionStates.set(binding, "executing", "Sending text to Codex.");
+        await sink?.update({
+          kind: "status",
+          title: "Codex Running",
+          text: "Codex has started working on this message."
+        });
+        const session = await this.runtime.ensureSession(binding);
+        return await this.runtime.sendAndWaitForOutput(session, text, {
+          timeoutMs: 600000,
+          pollMs: 1000,
+          lines: 300,
+          updateIntervalMs: 5000,
+          onUpdate: (output) =>
+            sink?.update({
+              kind: "summary",
+              title: "Codex Progress",
+              text: output
+            })
+        });
       });
       await this.executionStates.set(
         binding,
@@ -423,6 +448,26 @@ export class CommandRouter {
       allowed,
       summary
     });
+  }
+
+  private async runForBinding<T>(binding: ProjectBinding, work: () => Promise<T>): Promise<T> {
+    const previous = this.bindingQueues.get(binding.id) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const current = previous.catch(() => undefined).then(() => gate);
+    this.bindingQueues.set(binding.id, current);
+
+    await previous.catch(() => undefined);
+    try {
+      return await work();
+    } finally {
+      release();
+      if (this.bindingQueues.get(binding.id) === current) {
+        this.bindingQueues.delete(binding.id);
+      }
+    }
   }
 }
 

@@ -9,10 +9,19 @@ import {
   type Interaction,
   type Message
 } from "discord.js";
-import type { BridgeConfig, ConversationRef, InboundCommand, OutboundMessage } from "../../types.js";
+import type {
+  BridgeConfig,
+  ConversationRef,
+  InboundCommand,
+  OutboundMessage,
+  OutboundSink
+} from "../../types.js";
 import { DiscordIngressOwnership } from "./ownership.js";
 
-export type CommandHandler = (command: InboundCommand) => Promise<OutboundMessage>;
+export type CommandHandler = (
+  command: InboundCommand,
+  sink?: OutboundSink
+) => Promise<OutboundMessage>;
 export type OwnershipRejectHandler = (event: {
   conversation: ConversationRef;
   actor: { id: string; name?: string };
@@ -141,8 +150,9 @@ export class DiscordProviderAdapter {
         return;
       }
 
-      const outbound = await this.commandHandler(command);
-      await this.replyToInteractionSafely(interaction, outbound);
+      const sink = interactionProgressSink(interaction);
+      const outbound = await this.commandHandler(command, sink);
+      await sink.finalize(outbound);
     } catch (error) {
       await this.replyToInteractionSafely(interaction, {
         kind: "error",
@@ -208,6 +218,7 @@ export class DiscordProviderAdapter {
 
       await reactToMessage(message, MESSAGE_STATUS_REACTIONS.thinking);
       await reactToMessage(message, MESSAGE_STATUS_REACTIONS.executing);
+      const sink = messageProgressSink(message);
       const outbound = await this.commandHandler({
         conversation,
         actor: { id: message.author.id, name: message.author.username },
@@ -215,8 +226,8 @@ export class DiscordProviderAdapter {
         args: { text: message.content },
         rawText: message.content,
         messageId: message.id
-      });
-      await replyToMessageSafely(message, outbound);
+      }, sink);
+      await sink.finalize(outbound);
       await reactToMessage(message, MESSAGE_STATUS_REACTIONS.done);
     } catch (error) {
       await reactToMessage(message, MESSAGE_STATUS_REACTIONS.failed);
@@ -335,12 +346,75 @@ async function replyToMessageSafely(message: Message, outbound: OutboundMessage)
   }
 }
 
+function messageProgressSink(message: Message): OutboundSink & { finalize(message: OutboundMessage): Promise<void> } {
+  let primary: Message | undefined;
+  return {
+    update: async (outbound) => {
+      const first = formatOutboundParts(outbound)[0] ?? "";
+      if (!primary) {
+        primary = await message.reply(first);
+        return;
+      }
+      await primary.edit(first).catch(async () => {
+        primary = await message.reply(first);
+      });
+    },
+    finalize: async (outbound) => {
+      const [first, ...rest] = formatOutboundParts(outbound);
+      if (!primary) {
+        await replyToMessageSafely(message, outbound);
+        return;
+      }
+      await primary.edit(first).catch(async () => {
+        primary = await message.reply(first);
+      });
+      await sendAdditionalParts(message, rest);
+    }
+  };
+}
+
+function interactionProgressSink(
+  interaction: ChatInputCommandInteraction
+): OutboundSink & { finalize(message: OutboundMessage): Promise<void> } {
+  return {
+    update: async (outbound) => {
+      const first = formatOutboundParts(outbound)[0] ?? "";
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply(first).catch(() => undefined);
+        return;
+      }
+      await interaction.reply(first).catch(() => undefined);
+    },
+    finalize: async (outbound) => {
+      await sendToInteractionPartsSafely(interaction, outbound);
+    }
+  };
+}
+
 async function sendAdditionalParts(message: Message, payloads: string[]): Promise<void> {
   if (!("send" in message.channel) || typeof message.channel.send !== "function") return;
   for (const payload of payloads) {
     await message.channel.send(payload);
   }
 }
+
+async function sendToInteractionPartsSafely(
+  interaction: ChatInputCommandInteraction,
+  outbound: OutboundMessage
+): Promise<void> {
+  const [first, ...rest] = formatOutboundParts(outbound);
+  if (interaction.deferred && !interaction.replied) {
+    await interaction.editReply(first);
+  } else if (interaction.replied) {
+    await interaction.followUp(first);
+  } else {
+    await interaction.reply(first);
+  }
+  for (const payload of rest) {
+    await interaction.followUp(payload);
+  }
+}
+
 
 async function sendToInteractionChannelSafely(
   interaction: ChatInputCommandInteraction,

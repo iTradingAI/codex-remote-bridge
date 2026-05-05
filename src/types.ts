@@ -59,6 +59,10 @@ export interface OutboundMessage {
   fields?: OutboundField[];
 }
 
+export interface OutboundSink {
+  update(message: OutboundMessage): Promise<void>;
+}
+
 export interface AllowedScope {
   workspaceId: string;
   conversationId?: string;

@@ -21,7 +21,7 @@ export interface CodexRuntime {
   sendAndWaitForOutput(
     session: RuntimeSession,
     text: string,
-    options?: { timeoutMs?: number; pollMs?: number; lines?: number }
+    options?: SendAndWaitOptions
   ): Promise<string>;
   readRecent(session: RuntimeSession, lines?: number): Promise<string>;
   status(session: RuntimeSession): Promise<SessionStatus>;
@@ -115,7 +115,7 @@ export class CodexTmuxRuntime implements CodexRuntime {
   async sendAndWaitForOutput(
     session: RuntimeSession,
     text: string,
-    options: { timeoutMs?: number; pollMs?: number; lines?: number } = {}
+    options: SendAndWaitOptions = {}
   ): Promise<string> {
     const before = await this.readRecent(session, options.lines ?? 80).catch(() => "");
     await this.send(session, text);
@@ -125,6 +125,8 @@ export class CodexTmuxRuntime implements CodexRuntime {
     const deadline = Date.now() + timeoutMs;
     let latest = "";
     let bestOutput = "";
+    let lastUpdate = "";
+    let lastUpdateAt = 0;
 
     while (Date.now() < deadline) {
       await sleep(pollMs);
@@ -135,6 +137,16 @@ export class CodexTmuxRuntime implements CodexRuntime {
       }
       if (output && (looksComplete(output) || needsUserInput(output))) {
         return output;
+      }
+      if (
+        output &&
+        options.onUpdate &&
+        output !== lastUpdate &&
+        Date.now() - lastUpdateAt >= (options.updateIntervalMs ?? 5000)
+      ) {
+        lastUpdate = output;
+        lastUpdateAt = Date.now();
+        await options.onUpdate(output);
       }
     }
 
@@ -194,6 +206,14 @@ export class CodexTmuxRuntime implements CodexRuntime {
   private runBuilt(command: { file: string; args: string[]; cwd?: string }) {
     return this.runner.run(command.file, command.args, { cwd: command.cwd });
   }
+}
+
+export interface SendAndWaitOptions {
+  timeoutMs?: number;
+  pollMs?: number;
+  lines?: number;
+  updateIntervalMs?: number;
+  onUpdate?: (output: string) => Promise<void> | void;
 }
 
 export function outputAfterSend(before: string, latest: string, text: string): string {

@@ -276,6 +276,121 @@ describe("CommandRouter", () => {
     expect(response).toMatchObject({ kind: "summary", text: "codex replied" });
   });
 
+  it("serializes sends for the same bound project", async () => {
+    const dir = await tempDir();
+    let releaseFirst!: () => void;
+    const firstCanFinish = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let firstStarted = false;
+    let secondStarted = false;
+    const runtime = fakeRuntime({
+      sendAndWaitForOutput: async (_session, text) => {
+        if (text === "first") {
+          firstStarted = true;
+          await firstCanFinish;
+          return "first reply";
+        }
+        secondStarted = true;
+        return "second reply";
+      }
+    });
+    const config = testConfig({
+      dataDir: dir,
+      policy: { authorizedUserIds: ["user-1"], allowDirectInjection: true, requireConfirmationFor: [] }
+    });
+    const registry = new BindingRegistry(
+      config,
+      new JsonFileStore<BindingsDocument>(join(dir, "bindings.json"), emptyBindings)
+    );
+    const conversation = {
+      provider: "discord" as const,
+      workspaceId: "guild:1",
+      conversationId: "channel:2/thread:project"
+    };
+    await registry.bind({ conversation, projectPath: dir });
+    const router = newTestRouter(dir, config, registry, new ProjectPathGuard([]), runtime);
+
+    const first = router.handle({
+      conversation,
+      actor: { id: "user-1" },
+      command: "send",
+      args: { text: "first" }
+    });
+    await waitUntil(() => firstStarted);
+    const second = router.handle({
+      conversation,
+      actor: { id: "user-1" },
+      command: "send",
+      args: { text: "second" }
+    });
+    await sleep(10);
+
+    expect(secondStarted).toBe(false);
+    releaseFirst();
+    await expect(first).resolves.toMatchObject({ text: "first reply" });
+    await expect(second).resolves.toMatchObject({ text: "second reply" });
+    expect(secondStarted).toBe(true);
+  });
+
+  it("allows different bound projects to run concurrently", async () => {
+    const dir = await tempDir();
+    let releaseFirst!: () => void;
+    const firstCanFinish = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let secondStarted = false;
+    const runtime = fakeRuntime({
+      sendAndWaitForOutput: async (_session, text) => {
+        if (text === "first") {
+          await firstCanFinish;
+          return "first reply";
+        }
+        secondStarted = true;
+        return "second reply";
+      }
+    });
+    const config = testConfig({
+      dataDir: dir,
+      policy: { authorizedUserIds: ["user-1"], allowDirectInjection: true, requireConfirmationFor: [] }
+    });
+    const registry = new BindingRegistry(
+      config,
+      new JsonFileStore<BindingsDocument>(join(dir, "bindings.json"), emptyBindings)
+    );
+    const firstConversation = {
+      provider: "discord" as const,
+      workspaceId: "guild:1",
+      conversationId: "channel:2/thread:first"
+    };
+    const secondConversation = {
+      provider: "discord" as const,
+      workspaceId: "guild:1",
+      conversationId: "channel:2/thread:second"
+    };
+    await registry.bind({ conversation: firstConversation, projectPath: dir });
+    await registry.bind({ conversation: secondConversation, projectPath: dir });
+    const router = newTestRouter(dir, config, registry, new ProjectPathGuard([]), runtime);
+
+    const first = router.handle({
+      conversation: firstConversation,
+      actor: { id: "user-1" },
+      command: "send",
+      args: { text: "first" }
+    });
+    const second = router.handle({
+      conversation: secondConversation,
+      actor: { id: "user-1" },
+      command: "send",
+      args: { text: "second" }
+    });
+    await waitUntil(() => secondStarted);
+
+    releaseFirst();
+    await expect(first).resolves.toMatchObject({ text: "first reply" });
+    await expect(second).resolves.toMatchObject({ text: "second reply" });
+  });
+
   it("pins and unpins session residency", async () => {
     const dir = await tempDir();
     const runtime = fakeRuntime();
@@ -582,4 +697,17 @@ function fakeRuntime(overrides: Partial<CodexRuntime> = {}): CodexRuntime {
     stop: async () => undefined,
     ...overrides
   };
+}
+
+async function waitUntil(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 1000;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await sleep(1);
+  }
+  throw new Error("Timed out waiting for condition");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
