@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { TmuxCommandBuilder } from "../src/runtime/codex-tmux/tmux-command-builder.js";
+import {
+  projectTrustOverride,
+  TmuxCommandBuilder
+} from "../src/runtime/codex-tmux/tmux-command-builder.js";
 import type { ProjectBinding } from "../src/types.js";
 import { testConfig } from "./helpers.js";
 
@@ -22,6 +25,8 @@ describe("TmuxCommandBuilder", () => {
         "-c",
         "E:\\Projects\\codex-channel",
         "codex",
+        "-c",
+        'projects."E:\\\\Projects\\\\codex-channel".trust_level="trusted"',
         "--no-alt-screen"
       ]
     });
@@ -41,9 +46,17 @@ describe("TmuxCommandBuilder", () => {
         "-c",
         "/mnt/e/Projects/codex-channel",
         "codex",
+        "-c",
+        'projects."/mnt/e/Projects/codex-channel".trust_level="trusted"',
         "--no-alt-screen"
       ]
     });
+  });
+
+  it("quotes project paths for Codex config overrides", () => {
+    expect(projectTrustOverride('/tmp/has"quote')).toBe(
+      'projects."/tmp/has\\"quote".trust_level="trusted"'
+    );
   });
 
   it("uses caller-provided buffer names for sends", () => {

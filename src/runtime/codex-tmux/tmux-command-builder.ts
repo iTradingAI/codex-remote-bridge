@@ -36,6 +36,8 @@ export class TmuxCommandBuilder {
       "-c",
       this.projectPath(binding.projectPath),
       this.config.runtime.codexCommand,
+      "-c",
+      projectTrustOverride(this.projectPath(binding.projectPath)),
       "--no-alt-screen"
     ]);
   }
@@ -98,4 +100,12 @@ export class TmuxCommandBuilder {
     wslArgs.push("--", command, ...args);
     return { file: this.config.runtime.windows.wslCommand, args: wslArgs };
   }
+}
+
+export function projectTrustOverride(projectPath: string): string {
+  return `projects.${tomlQuotedKey(projectPath)}.trust_level="trusted"`;
+}
+
+function tomlQuotedKey(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
