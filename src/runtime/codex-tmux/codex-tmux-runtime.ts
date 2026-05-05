@@ -128,12 +128,13 @@ export class CodexTmuxRuntime implements CodexRuntime {
     while (Date.now() < deadline) {
       await sleep(pollMs);
       latest = await this.readRecent(session, options.lines ?? 80).catch(() => latest);
-      if (latest && latest !== before && !isOnlyEcho(latest, before, text)) {
-        return latest;
+      const output = outputAfterSend(before, latest, text);
+      if (output) {
+        return output;
       }
     }
 
-    return latest || before;
+    return outputAfterSend(before, latest, text) || latest || before;
   }
 
   async readRecent(session: RuntimeSession, lines = 80): Promise<string> {
@@ -191,9 +192,25 @@ export class CodexTmuxRuntime implements CodexRuntime {
   }
 }
 
-function isOnlyEcho(latest: string, before: string, text: string): boolean {
+export function outputAfterSend(before: string, latest: string, text: string): string {
+  if (!latest || latest === before) return "";
   const added = latest.slice(commonPrefixLength(before, latest)).trim();
-  return added === text.trim();
+  if (!added) return "";
+  const withoutEcho = stripPromptEcho(added, text).trim();
+  return withoutEcho || "";
+}
+
+function stripPromptEcho(output: string, text: string): string {
+  const normalizedText = text.trim();
+  const lines = output.split(/\r?\n/);
+  while (lines.length > 0 && lines[0].trim().length === 0) {
+    lines.shift();
+  }
+  const first = lines[0]?.trim();
+  if (first === normalizedText || first === `› ${normalizedText}` || first === `> ${normalizedText}`) {
+    lines.shift();
+  }
+  return lines.join("\n");
 }
 
 function commonPrefixLength(left: string, right: string): number {

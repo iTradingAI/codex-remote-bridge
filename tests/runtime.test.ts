@@ -1,6 +1,9 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CodexTmuxRuntime } from "../src/runtime/codex-tmux/codex-tmux-runtime.js";
+import {
+  CodexTmuxRuntime,
+  outputAfterSend
+} from "../src/runtime/codex-tmux/codex-tmux-runtime.js";
 import type { CommandResult, CommandRunner } from "../src/runtime/process.js";
 import { emptySessions, type SessionsDocument } from "../src/storage/documents.js";
 import { JsonFileStore } from "../src/storage/json-file-store.js";
@@ -114,6 +117,24 @@ describe("CodexTmuxRuntime", () => {
     );
 
     expect(output).toContain("Codex response");
+    expect(output).not.toContain("before");
+    expect(output).not.toContain("hello");
+  });
+
+  it("extracts only newly added pane output after the prompt echo", () => {
+    const before = [
+      "old status",
+      "old response"
+    ].join("\n");
+    const latest = [
+      "old status",
+      "old response",
+      "› 检查当前git状态",
+      "",
+      "当前仓库在 main 分支。"
+    ].join("\n");
+
+    expect(outputAfterSend(before, latest, "检查当前git状态")).toBe("当前仓库在 main 分支。");
   });
 });
 

@@ -115,9 +115,12 @@ export class DiscordProviderAdapter {
 
     try {
       if (!this.commandHandler) throw new Error("No command handler registered");
+      console.info(`Discord interaction received: ${interaction.id}`);
       await deferInteraction(interaction);
+      console.info(`Discord interaction deferred: ${interaction.id}`);
 
       const command = this.commandFromInteraction(interaction);
+      console.info(`Discord command routed: ${interaction.id} ${command.command}`);
       const ownership = this.ownership.accepts(command.conversation);
       if (!ownership.accepted) {
         const reason = ownership.reason ?? "ownership rejected";
@@ -152,6 +155,7 @@ export class DiscordProviderAdapter {
   ): Promise<void> {
     try {
       await this.replyToInteraction(interaction, message);
+      console.info(`Discord interaction replied: ${interaction.id} ${message.kind}`);
     } catch (error) {
       console.error(`Failed to reply to Discord interaction: ${(error as Error).message}`);
     }
