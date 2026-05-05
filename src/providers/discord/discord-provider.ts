@@ -116,8 +116,9 @@ export class DiscordProviderAdapter {
     try {
       if (!this.commandHandler) throw new Error("No command handler registered");
       console.info(`Discord interaction received: ${interaction.id}`);
-      await deferInteraction(interaction);
-      console.info(`Discord interaction deferred: ${interaction.id}`);
+      if (await deferInteractionSafely(interaction)) {
+        console.info(`Discord interaction deferred: ${interaction.id}`);
+      }
 
       const command = this.commandFromInteraction(interaction);
       console.info(`Discord command routed: ${interaction.id} ${command.command}`);
@@ -158,6 +159,7 @@ export class DiscordProviderAdapter {
       console.info(`Discord interaction replied: ${interaction.id} ${message.kind}`);
     } catch (error) {
       console.error(`Failed to reply to Discord interaction: ${(error as Error).message}`);
+      await sendToInteractionChannelSafely(interaction, message);
     }
   }
 
@@ -209,9 +211,9 @@ export class DiscordProviderAdapter {
     } catch (error) {
       await reactToMessage(message, MESSAGE_STATUS_REACTIONS.failed);
       await replyToMessageSafely(message, {
-          kind: "error",
-          title: "Message Failed",
-          text: (error as Error).message
+        kind: "error",
+        title: "Message Failed",
+        text: (error as Error).message
       });
     }
   }
@@ -291,9 +293,15 @@ export function shouldIgnoreMessage(message: Pick<Message, "author" | "system">)
   return message.author.bot || message.system;
 }
 
-async function deferInteraction(interaction: ChatInputCommandInteraction): Promise<void> {
-  if (interaction.deferred || interaction.replied) return;
-  await interaction.deferReply();
+async function deferInteractionSafely(interaction: ChatInputCommandInteraction): Promise<boolean> {
+  if (interaction.deferred || interaction.replied) return true;
+  try {
+    await interaction.deferReply();
+    return true;
+  } catch (error) {
+    console.error(`Failed to defer Discord interaction: ${(error as Error).message}`);
+    return false;
+  }
 }
 
 async function reactToMessage(message: Message, emoji: string): Promise<void> {
@@ -315,6 +323,20 @@ async function replyToMessageSafely(message: Message, outbound: OutboundMessage)
     }
   } catch (error) {
     console.error(`Failed to send fallback Discord message: ${(error as Error).message}`);
+  }
+}
+
+async function sendToInteractionChannelSafely(
+  interaction: ChatInputCommandInteraction,
+  outbound: OutboundMessage
+): Promise<void> {
+  const channel = interaction.channel;
+  if (!channel || !("send" in channel) || typeof channel.send !== "function") return;
+  try {
+    await channel.send(formatOutbound(outbound));
+    console.info(`Discord interaction fallback channel message sent: ${interaction.id}`);
+  } catch (error) {
+    console.error(`Failed to send fallback Discord interaction message: ${(error as Error).message}`);
   }
 }
 
