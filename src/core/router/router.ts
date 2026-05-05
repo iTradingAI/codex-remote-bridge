@@ -370,7 +370,9 @@ export class CommandRouter {
           timeoutMs: 600000,
           pollMs: 1000,
           lines: 300,
+          stableMs: 8000,
           updateIntervalMs: 5000,
+          messageId: command.messageId,
           onUpdate: (output) =>
             sink?.update({
               kind: "summary",

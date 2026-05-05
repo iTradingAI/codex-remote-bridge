@@ -153,6 +153,13 @@ export interface RuntimeSession {
   paneId?: string;
   startedAt?: string;
   lastSeenAt: string;
+  outputCursor?: RuntimeOutputCursor;
+}
+
+export interface RuntimeOutputCursor {
+  tail: string;
+  updatedAt: string;
+  messageId?: string;
 }
 
 export type SessionState =

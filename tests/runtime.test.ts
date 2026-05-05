@@ -184,6 +184,50 @@ describe("CodexTmuxRuntime", () => {
 
     expect(outputAfterSend(before, latest, "new task")).toBe("fresh answer");
   });
+
+  it("anchors output to the current prompt instead of old completed scrollback", () => {
+    const latest = [
+      "old answer",
+      "Worked for 1m",
+      "",
+      "> current question",
+      "",
+      "current answer"
+    ].join("\n");
+
+    expect(outputAfterSend("unrelated old tail", latest, "current question")).toBe("current answer");
+  });
+
+  it("persists the last delivered pane cursor for the session", async () => {
+    const dir = await tempDir();
+    const runner = new FakeRunner();
+    runner.paneOutputs = [
+      "old output\n",
+      "> hello\n",
+      "> hello\nfresh answer\nWorked for 1s\n"
+    ];
+    const store = new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions);
+    const runtime = new CodexTmuxRuntime(testConfig({ dataDir: dir }), store, runner);
+    const session = {
+      bindingId: "binding-1",
+      machineId: "test-machine",
+      projectPath: dir,
+      tmuxSession: "codex-test",
+      lastSeenAt: new Date().toISOString()
+    };
+
+    await runtime.ensureSession(binding(dir));
+    const output = await runtime.sendAndWaitForOutput(session, "hello", {
+      timeoutMs: 3000,
+      pollMs: 1,
+      messageId: "discord-message-1"
+    });
+    const document = await store.read();
+
+    expect(output).toContain("fresh answer");
+    expect(document.sessions[0]?.outputCursor?.tail).toContain("fresh answer");
+    expect(document.sessions[0]?.outputCursor?.messageId).toBe("discord-message-1");
+  });
 });
 
 function argAfter(args: string[], flag: string): string | undefined {

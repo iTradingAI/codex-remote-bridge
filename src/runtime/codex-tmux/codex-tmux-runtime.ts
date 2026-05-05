@@ -117,7 +117,9 @@ export class CodexTmuxRuntime implements CodexRuntime {
     text: string,
     options: SendAndWaitOptions = {}
   ): Promise<string> {
-    const before = await this.readRecent(session, options.lines ?? 80).catch(() => "");
+    const storedCursor = await this.readStoredCursor(session);
+    const before =
+      storedCursor?.tail || (await this.readRecent(session, options.lines ?? 80).catch(() => ""));
     await this.send(session, text);
 
     const timeoutMs = options.timeoutMs ?? 120000;
@@ -127,15 +129,20 @@ export class CodexTmuxRuntime implements CodexRuntime {
     let bestOutput = "";
     let lastUpdate = "";
     let lastUpdateAt = 0;
+    let stableSince = 0;
 
     while (Date.now() < deadline) {
       await sleep(pollMs);
       latest = await this.readRecent(session, options.lines ?? 80).catch(() => latest);
       const output = outputAfterSend(before, latest, text);
       if (output) {
+        if (output !== bestOutput || stableSince === 0) {
+          stableSince = Date.now();
+        }
         bestOutput = output;
       }
       if (output && (looksComplete(output) || needsUserInput(output))) {
+        await this.saveOutputCursor(session, latest, options.messageId);
         return output;
       }
       if (
@@ -147,10 +154,20 @@ export class CodexTmuxRuntime implements CodexRuntime {
         lastUpdate = output;
         lastUpdateAt = Date.now();
         await options.onUpdate(output);
+        if (latest) {
+          await this.saveOutputCursor(session, latest, options.messageId);
+        }
+      }
+      if (output && Date.now() - stableSince >= (options.stableMs ?? 8000)) {
+        await this.saveOutputCursor(session, latest, options.messageId);
+        return output;
       }
     }
 
-    return bestOutput || outputAfterSend(before, latest, text) || latest || before;
+    if (latest) {
+      await this.saveOutputCursor(session, latest, options.messageId);
+    }
+    return bestOutput || outputAfterSend(before, latest, text);
   }
 
   async readRecent(session: RuntimeSession, lines = 80): Promise<string> {
@@ -177,18 +194,55 @@ export class CodexTmuxRuntime implements CodexRuntime {
   }
 
   private async saveSession(session: RuntimeSession): Promise<RuntimeSession> {
+    let saved = session;
     await this.sessions.update((document) => {
       const index = document.sessions.findIndex(
         (item) => item.bindingId === session.bindingId && item.machineId === session.machineId
       );
       if (index >= 0) {
-        document.sessions[index] = session;
+        saved = {
+          ...document.sessions[index],
+          ...session,
+          outputCursor: session.outputCursor ?? document.sessions[index].outputCursor
+        };
+        document.sessions[index] = saved;
       } else {
         document.sessions.push(session);
       }
       return document;
     });
-    return session;
+    return saved;
+  }
+
+  private async readStoredCursor(session: RuntimeSession) {
+    const document = await this.sessions.read();
+    return document.sessions.find(
+      (item) => item.bindingId === session.bindingId && item.machineId === session.machineId
+    )?.outputCursor;
+  }
+
+  private async saveOutputCursor(
+    session: RuntimeSession,
+    capturedPane: string,
+    messageId?: string
+  ): Promise<void> {
+    const tail = capturedPane.slice(-6000);
+    await this.sessions.update((document) => {
+      const index = document.sessions.findIndex(
+        (item) => item.bindingId === session.bindingId && item.machineId === session.machineId
+      );
+      if (index >= 0) {
+        document.sessions[index] = {
+          ...document.sessions[index],
+          outputCursor: {
+            tail,
+            updatedAt: new Date().toISOString(),
+            messageId
+          }
+        };
+      }
+      return document;
+    });
   }
 
   private sessionFromBinding(binding: ProjectBinding): RuntimeSession {
@@ -212,16 +266,33 @@ export interface SendAndWaitOptions {
   timeoutMs?: number;
   pollMs?: number;
   lines?: number;
+  stableMs?: number;
   updateIntervalMs?: number;
+  messageId?: string;
   onUpdate?: (output: string) => Promise<void> | void;
 }
 
 export function outputAfterSend(before: string, latest: string, text: string): string {
   if (!latest || latest === before) return "";
+  const anchored = outputAfterPromptEcho(latest, text);
+  if (anchored != null) return anchored;
   const added = latest.slice(sharedBoundaryLength(before, latest)).trim();
   if (!added) return "";
   const withoutEcho = stripPromptEcho(added, text).trim();
   return withoutEcho || "";
+}
+
+function outputAfterPromptEcho(output: string, text: string): string | undefined {
+  const normalizedText = text.trim();
+  if (!normalizedText) return undefined;
+
+  const lines = output.split(/\r?\n/);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (isPromptEchoLine(lines[index]?.trim() ?? "", normalizedText)) {
+      return lines.slice(index + 1).join("\n").trim();
+    }
+  }
+  return undefined;
 }
 
 function stripPromptEcho(output: string, text: string): string {
@@ -235,6 +306,16 @@ function stripPromptEcho(output: string, text: string): string {
     lines.shift();
   }
   return lines.join("\n");
+}
+
+function isPromptEchoLine(line: string, text: string): boolean {
+  return (
+    line === text ||
+    line === `> ${text}` ||
+    line === `› ${text}` ||
+    line === `鈥?${text}` ||
+    line === `鈥? ${text}`
+  );
 }
 
 function sharedBoundaryLength(left: string, right: string): number {
