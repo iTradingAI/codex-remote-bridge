@@ -3,7 +3,8 @@ import type {
   BridgeConfig,
   ConversationRef,
   PolicyConfig,
-  ProjectBinding
+  ProjectBinding,
+  SessionMode
 } from "../../types.js";
 import { bindingIdFromConversation, conversationKey } from "../conversation.js";
 import { JsonFileStore } from "../../storage/json-file-store.js";
@@ -15,6 +16,7 @@ export interface BindRequest {
   projectPath: string;
   aliases?: string[];
   policy?: Partial<PolicyConfig>;
+  sessionMode?: SessionMode;
   tmuxSession?: string;
 }
 
@@ -28,12 +30,12 @@ export class BindingRegistry {
     const document = await this.store.read();
     return document.bindings.filter(
       (binding) => binding.machineId === this.config.machineId && binding.enabled
-    );
+    ).map((binding) => this.normalize(binding));
   }
 
   async findByConversation(conversation: ConversationRef): Promise<ProjectBinding | undefined> {
     const document = await this.store.read();
-    return document.bindings.find(
+    const binding = document.bindings.find(
       (binding) =>
         binding.enabled &&
         binding.machineId === this.config.machineId &&
@@ -41,6 +43,7 @@ export class BindingRegistry {
         binding.workspaceId === conversation.workspaceId &&
         binding.conversationId === conversation.conversationId
     );
+    return binding ? this.normalize(binding) : undefined;
   }
 
   async findByAlias(alias: string): Promise<ProjectBinding | undefined> {
@@ -72,6 +75,7 @@ export class BindingRegistry {
         kind: "codex-tmux",
         tmuxSession: request.tmuxSession ?? `codex-${id}`.slice(0, 80)
       },
+      sessionMode: request.sessionMode ?? "on_demand",
       policy: {
         ...this.config.policy,
         ...request.policy
@@ -103,6 +107,34 @@ export class BindingRegistry {
     return nextBinding;
   }
 
+  async setSessionMode(binding: ProjectBinding, sessionMode: SessionMode): Promise<ProjectBinding> {
+    let updated: ProjectBinding | undefined;
+    await this.store.update((document) => {
+      document.bindings = document.bindings.map((item) => {
+        if (
+          item.id === binding.id &&
+          item.machineId === this.config.machineId &&
+          item.provider === binding.provider &&
+          item.workspaceId === binding.workspaceId &&
+          item.conversationId === binding.conversationId
+        ) {
+          updated = {
+            ...item,
+            sessionMode,
+            updatedAt: new Date().toISOString()
+          };
+          return updated;
+        }
+        return item;
+      });
+      return document;
+    });
+    if (!updated) {
+      throw new Error(`Binding not found: ${binding.id}`);
+    }
+    return updated;
+  }
+
   async unbind(conversation: ConversationRef): Promise<boolean> {
     let changed = false;
     await this.store.update((document) => {
@@ -129,5 +161,12 @@ export class BindingRegistry {
       workspaceId: binding.workspaceId,
       conversationId: binding.conversationId
     });
+  }
+
+  private normalize(binding: ProjectBinding): ProjectBinding {
+    return {
+      ...binding,
+      sessionMode: binding.sessionMode ?? "on_demand"
+    };
   }
 }

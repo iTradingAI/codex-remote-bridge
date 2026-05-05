@@ -1,16 +1,18 @@
 import { createHash } from "node:crypto";
 import type { AuditLog } from "../../storage/audit-log.js";
 import type { ApprovalStore } from "../../storage/approval-store.js";
+import type { ExecutionStateStore } from "../../storage/execution-state-store.js";
 import type { BindingRegistry } from "../bindings/binding-registry.js";
 import type { PolicyGuard } from "../policy/policy-guard.js";
 import type { ProjectPathGuard } from "../policy/project-path-guard.js";
-import type { CodexTmuxRuntime } from "../../runtime/codex-tmux/codex-tmux-runtime.js";
+import type { CodexRuntime } from "../../runtime/codex-tmux/codex-tmux-runtime.js";
 import type {
   BridgeConfig,
   ConversationRef,
   InboundCommand,
   OutboundMessage,
-  ProjectBinding
+  ProjectBinding,
+  RuntimeSession
 } from "../../types.js";
 
 type ApprovalPayload =
@@ -35,7 +37,8 @@ export class CommandRouter {
     private readonly pathGuard: ProjectPathGuard,
     private readonly policy: PolicyGuard,
     private readonly approvals: ApprovalStore,
-    private readonly runtime: CodexTmuxRuntime,
+    private readonly runtime: CodexRuntime,
+    private readonly executionStates: ExecutionStateStore,
     private readonly audit: AuditLog
   ) {}
 
@@ -43,20 +46,24 @@ export class CommandRouter {
     try {
       switch (command.command) {
         case "bind":
-          return this.bind(command);
+          return await this.bind(command);
         case "confirm":
-          return this.confirm(command);
+          return await this.confirm(command);
         case "unbind":
-          return this.unbind(command);
+          return await this.unbind(command);
         case "status":
-          return this.status(command);
+          return await this.status(command);
         case "start":
         case "resume":
-          return this.start(command);
+          return await this.start(command);
+        case "pin":
+          return await this.pin(command);
+        case "unpin":
+          return await this.unpin(command);
         case "send":
-          return this.send(command);
+          return await this.send(command);
         case "projects":
-          return this.projects(command);
+          return await this.projects(command);
         default:
           return { kind: "error", text: "Unknown command." };
       }
@@ -114,6 +121,7 @@ export class CommandRouter {
         projectPath: payload.projectPath,
         aliases: payload.aliases
       });
+      await this.executionStates.set(binding, "idle");
       await this.auditCommand(command, true, `binding confirmed ${binding.id}`);
       return {
         kind: "status",
@@ -136,8 +144,15 @@ export class CommandRouter {
       };
     }
     this.sensitiveSendText.delete(approval.id);
-    const session = await this.runtime.ensureSession(binding);
-    await this.runtime.send(session, text);
+    try {
+      await this.executionStates.set(binding, "executing", "Confirmed high-risk send.");
+      const session = await this.runtime.ensureSession(binding);
+      await this.runtime.send(session, text);
+      await this.executionStates.set(binding, "completed", "Confirmed text was sent.");
+    } catch (error) {
+      await this.executionStates.set(binding, "failed", (error as Error).message);
+      throw error;
+    }
     await this.auditCommand(command, true, "confirmed high-risk send", binding, text);
     return { kind: "status", text: "Confirmed text was sent to Codex." };
   }
@@ -149,7 +164,12 @@ export class CommandRouter {
       await this.auditCommand(command, false, auth.reason ?? "unbind denied", binding);
       return { kind: "error", text: auth.reason ?? "Not authorized." };
     }
+    const session = await this.runtime.discoverExisting(binding);
+    if (session) {
+      await this.runtime.stop(session);
+    }
     const removed = await this.bindings.unbind(command.conversation);
+    await this.executionStates.set(binding, "idle", "Binding was removed.");
     await this.auditCommand(command, removed, removed ? "binding disabled" : "binding not found", binding);
     return {
       kind: "status",
@@ -173,6 +193,7 @@ export class CommandRouter {
     const recent = discovered
       ? await this.runtime.readRecent(discovered, 40).catch(() => "")
       : "";
+    const execution = await this.executionStates.get(binding, { liveSessionMissing: !discovered });
     await this.auditCommand(command, true, `status ${status.state}`, binding);
     return {
       kind: "status",
@@ -181,7 +202,10 @@ export class CommandRouter {
       fields: [
         { label: "project", value: binding.projectName },
         { label: "machine", value: binding.machineId },
-        { label: "state", value: status.state },
+        { label: "parent scope", value: ownedParentScope(this.config) },
+        { label: "session mode", value: binding.sessionMode },
+        { label: "tmux state", value: status.state },
+        { label: "execution state", value: `${execution.state} (${execution.updatedAt})` },
         { label: "path", value: binding.projectPath }
       ]
     };
@@ -195,7 +219,15 @@ export class CommandRouter {
       return { kind: "error", text: auth.reason ?? "Not authorized." };
     }
 
-    const session = await this.runtime.ensureSession(binding);
+    let session: RuntimeSession;
+    try {
+      await this.executionStates.set(binding, "executing", "Ensuring Codex session.");
+      session = await this.runtime.ensureSession(binding);
+      await this.executionStates.set(binding, "completed", "Codex session is ready.");
+    } catch (error) {
+      await this.executionStates.set(binding, "failed", (error as Error).message);
+      throw error;
+    }
     await this.auditCommand(command, true, `session ensured ${session.tmuxSession}`, binding);
     return {
       kind: "status",
@@ -203,7 +235,68 @@ export class CommandRouter {
       text: `tmux session ${session.tmuxSession} is ready.`,
       fields: [
         { label: "project", value: binding.projectName },
+        { label: "session mode", value: binding.sessionMode },
         { label: "path", value: binding.projectPath }
+      ]
+    };
+  }
+
+  private async pin(command: InboundCommand): Promise<OutboundMessage> {
+    const binding = await this.requireBinding(command);
+    const auth = this.policy.canStart(command.actor, binding);
+    if (!auth.allowed) {
+      await this.auditCommand(command, false, auth.reason ?? "pin denied", binding);
+      return { kind: "error", text: auth.reason ?? "Not authorized." };
+    }
+
+    const pinned = await this.bindings.setSessionMode(binding, "pinned");
+    let session: RuntimeSession;
+    try {
+      await this.executionStates.set(pinned, "executing", "Pinning session.");
+      session = await this.runtime.ensureSession(pinned);
+      await this.executionStates.set(pinned, "completed", "Session pinned.");
+    } catch (error) {
+      await this.executionStates.set(pinned, "failed", (error as Error).message);
+      throw error;
+    }
+    await this.auditCommand(command, true, `session pinned ${session.tmuxSession}`, pinned);
+    return {
+      kind: "status",
+      title: "Codex session pinned",
+      text: `tmux session ${session.tmuxSession} will stay resident.`,
+      fields: [
+        { label: "project", value: pinned.projectName },
+        { label: "session mode", value: pinned.sessionMode },
+        { label: "path", value: pinned.projectPath }
+      ]
+    };
+  }
+
+  private async unpin(command: InboundCommand): Promise<OutboundMessage> {
+    const binding = await this.requireBinding(command);
+    const auth = this.policy.canStart(command.actor, binding);
+    if (!auth.allowed) {
+      await this.auditCommand(command, false, auth.reason ?? "unpin denied", binding);
+      return { kind: "error", text: auth.reason ?? "Not authorized." };
+    }
+
+    const unpinned = await this.bindings.setSessionMode(binding, "on_demand");
+    const session = await this.runtime.discoverExisting(unpinned);
+    if (session) {
+      await this.runtime.stop(session);
+    }
+    await this.executionStates.set(unpinned, "idle", "Session unpinned.");
+    await this.auditCommand(command, true, "session unpinned", unpinned);
+    return {
+      kind: "status",
+      title: "Codex session unpinned",
+      text: session
+        ? "This project is back to on-demand mode and the resident session was stopped."
+        : "This project is back to on-demand mode.",
+      fields: [
+        { label: "project", value: unpinned.projectName },
+        { label: "session mode", value: unpinned.sessionMode },
+        { label: "path", value: unpinned.projectPath }
       ]
     };
   }
@@ -219,6 +312,7 @@ export class CommandRouter {
       };
     }
 
+    await this.executionStates.set(binding, "received", "Message received from Discord.");
     const decision = this.policy.canSend(command.actor, binding, text);
     if (decision.requiresConfirmation) {
       const approval = await this.approvals.create({
@@ -231,6 +325,7 @@ export class CommandRouter {
         })
       });
       this.sensitiveSendText.set(approval.id, text);
+      await this.executionStates.set(binding, "waiting_input", "High-risk confirmation required.");
       await this.auditCommand(
         command,
         false,
@@ -249,12 +344,25 @@ export class CommandRouter {
       return { kind: "error", text: decision.reason ?? "Not authorized." };
     }
 
-    const session = await this.runtime.ensureSession(binding);
-    const recent = await this.runtime.sendAndWaitForOutput(session, text, {
-      timeoutMs: 12000,
-      pollMs: 1000,
-      lines: 80
-    });
+    let recent = "";
+    try {
+      await this.executionStates.set(binding, "queued", "Send accepted for Codex.");
+      await this.executionStates.set(binding, "executing", "Sending text to Codex.");
+      const session = await this.runtime.ensureSession(binding);
+      recent = await this.runtime.sendAndWaitForOutput(session, text, {
+        timeoutMs: 12000,
+        pollMs: 1000,
+        lines: 80
+      });
+      await this.executionStates.set(
+        binding,
+        "completed",
+        recent ? "Codex output captured." : "Text sent."
+      );
+    } catch (error) {
+      await this.executionStates.set(binding, "failed", (error as Error).message);
+      throw error;
+    }
     await this.auditCommand(command, true, "sent text to codex", binding, text);
     return {
       kind: "summary",
@@ -276,7 +384,9 @@ export class CommandRouter {
     return {
       kind: "status",
       title: "Bound projects",
-      text: authorized.map((binding) => `${binding.projectName}: ${binding.projectPath}`).join("\n")
+      text: authorized
+        .map((binding) => `${binding.projectName} [${binding.sessionMode}]: ${binding.projectPath}`)
+        .join("\n")
     };
   }
 
@@ -326,4 +436,8 @@ function stringArg(command: InboundCommand, name: string): string {
     throw new Error(`Missing required argument: ${name}`);
   }
   return value;
+}
+
+function ownedParentScope(config: BridgeConfig): string {
+  return config.discord.allowedScopes[0]?.conversationId ?? "not configured";
 }

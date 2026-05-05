@@ -12,27 +12,30 @@ export function testConfig(overrides: Partial<BridgeConfig> = {}): BridgeConfig 
     machineId: "test-machine",
     dataDir: "./data-test",
     logDir: "./logs-test",
-    discord: {
-      tokenEnv: "DISCORD_BOT_TOKEN",
-      applicationId: "app",
-      guildId: "guild",
-      allowedScopes: [{ workspaceId: "guild:1", conversationId: "channel:2" }]
-    },
     pathAllowlist: [],
+    ...overrides,
+    discord: {
+      tokenEnv: overrides.discord?.tokenEnv ?? "DISCORD_BOT_TOKEN",
+      applicationId: overrides.discord?.applicationId ?? "app",
+      guildId: overrides.discord?.guildId ?? "guild",
+      allowedScopes: overrides.discord?.allowedScopes ?? [
+        { workspaceId: "guild:1", conversationId: "channel:2" }
+      ]
+    },
     runtime: {
       kind: "codex-tmux",
-      tmuxCommand: "tmux",
-      codexCommand: "codex",
+      tmuxCommand: overrides.runtime?.tmuxCommand ?? "tmux",
+      codexCommand: overrides.runtime?.codexCommand ?? "codex",
       windows: {
-        useWsl: true,
-        wslCommand: "wsl.exe"
+        useWsl: overrides.runtime?.windows?.useWsl ?? true,
+        wslCommand: overrides.runtime?.windows?.wslCommand ?? "wsl.exe",
+        distro: overrides.runtime?.windows?.distro
       }
     },
     policy: {
-      authorizedUserIds: ["user-1"],
-      allowDirectInjection: false,
-      requireConfirmationFor: ["push", "delete"]
-    },
-    ...overrides
+      authorizedUserIds: overrides.policy?.authorizedUserIds ?? ["user-1"],
+      allowDirectInjection: overrides.policy?.allowDirectInjection ?? false,
+      requireConfirmationFor: overrides.policy?.requireConfirmationFor ?? ["push", "delete"]
+    }
   };
 }

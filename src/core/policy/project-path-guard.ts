@@ -24,28 +24,30 @@ export class ProjectPathGuard {
       return { allowed: false, reason: "Project path does not exist" };
     }
 
-    const allowedRoots = await Promise.all(
-      this.allowlist.map(async (root) => {
-        const repairedRoot = repairUtf8DecodedAsGbk(root);
-        try {
-          return normalizePath(await realpath(repairedRoot));
-        } catch {
-          return normalizePath(resolve(repairedRoot));
-        }
-      })
-    );
-    const normalizedProject = normalizePath(resolvedPath);
-
-    const allowed = allowedRoots.some(
-      (root) => normalizedProject === root || normalizedProject.startsWith(`${root}/`)
-    );
-
-    if (!allowed) {
-      return { allowed: false, resolvedPath, reason: "Project path is outside allowlist" };
-    }
-
     if (isDangerousRoot(resolvedPath)) {
       return { allowed: false, resolvedPath, reason: "Project path is too broad to bind safely" };
+    }
+
+    if (this.allowlist.length > 0) {
+      const allowedRoots = await Promise.all(
+        this.allowlist.map(async (root) => {
+          const repairedRoot = repairUtf8DecodedAsGbk(root);
+          try {
+            return normalizePath(await realpath(repairedRoot));
+          } catch {
+            return normalizePath(resolve(repairedRoot));
+          }
+        })
+      );
+      const normalizedProject = normalizePath(resolvedPath);
+
+      const allowed = allowedRoots.some(
+        (root) => normalizedProject === root || normalizedProject.startsWith(`${root}/`)
+      );
+
+      if (!allowed) {
+        return { allowed: false, resolvedPath, reason: "Project path is outside allowlist" };
+      }
     }
 
     return { allowed: true, resolvedPath };
@@ -53,10 +55,23 @@ export class ProjectPathGuard {
 }
 
 export function normalizePath(value: string): string {
-  return repairUtf8DecodedAsGbk(value).replace(/\\/g, "/").replace(/\/+$/g, "").toLowerCase();
+  const normalized = repairUtf8DecodedAsGbk(value).replace(/\\/g, "/").toLowerCase();
+  if (normalized === "/") return normalized;
+  return normalized.replace(/\/+$/g, "");
 }
 
 function isDangerousRoot(value: string): boolean {
   const normalized = normalizePath(value);
-  return /^[a-z]:$/i.test(normalized) || normalized === "/" || normalized.endsWith(":/users");
+  return (
+    /^[a-z]:$/i.test(normalized) ||
+    normalized === "/" ||
+    /^[a-z]:\/users$/i.test(normalized) ||
+    /^[a-z]:\/windows$/i.test(normalized) ||
+    /^[a-z]:\/program files$/i.test(normalized) ||
+    normalized === "/home" ||
+    normalized === "/users" ||
+    normalized === "/usr" ||
+    normalized === "/var" ||
+    normalized === "/etc"
+  );
 }

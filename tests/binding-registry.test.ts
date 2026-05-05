@@ -31,6 +31,29 @@ describe("BindingRegistry", () => {
       conversationId: "channel:2"
     })).toMatchObject({ projectPath: dir });
     expect(await registry.findByAlias("local")).toMatchObject({ id: binding.id });
+    expect(binding.sessionMode).toBe("on_demand");
+  });
+
+  it("persists session mode changes", async () => {
+    const dir = await tempDir();
+    const config = testConfig({ dataDir: dir });
+    const store = new JsonFileStore<BindingsDocument>(join(dir, "bindings.json"), emptyBindings);
+    const registry = new BindingRegistry(config, store);
+    const binding = await registry.bind({
+      conversation: {
+        provider: "discord",
+        workspaceId: "guild:1",
+        conversationId: "channel:2"
+      },
+      projectPath: dir
+    });
+
+    await registry.setSessionMode(binding, "pinned");
+    const reloaded = new BindingRegistry(config, store);
+
+    await expect(reloaded.findByConversation(binding)).resolves.toMatchObject({
+      sessionMode: "pinned"
+    });
   });
 
   it("repairs mojibake before persisting project paths", async () => {

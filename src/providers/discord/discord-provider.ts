@@ -89,6 +89,12 @@ export class DiscordProviderAdapter {
         .addSubcommand((subcommand) => subcommand.setName("start").setDescription("Start Codex"))
         .addSubcommand((subcommand) => subcommand.setName("resume").setDescription("Resume Codex"))
         .addSubcommand((subcommand) =>
+          subcommand.setName("pin").setDescription("Keep this project's Codex session resident")
+        )
+        .addSubcommand((subcommand) =>
+          subcommand.setName("unpin").setDescription("Return this project to on-demand sessions")
+        )
+        .addSubcommand((subcommand) =>
           subcommand
             .setName("send")
             .setDescription("Send text to Codex")

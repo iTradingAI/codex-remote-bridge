@@ -21,9 +21,8 @@ const answers: SetupAnswers = {
   applicationId: "app-123",
   guildId: "guild-123",
   channelId: "channel-456",
-  threadId: "thread-789",
   authorizedUserIds: ["user-1", "user-2"],
-  pathAllowlist: ["E:\\Projects", "/srv/projects"],
+  pathAllowlist: [],
   allowDirectInjection: false,
   useWsl: true,
   wslCommand: "wsl.exe",
@@ -44,9 +43,10 @@ describe("setup config generation", () => {
     expect(loaded.discord.allowedScopes).toEqual([
       {
         workspaceId: "guild:guild-123",
-        conversationId: "channel:channel-456/thread:thread-789"
+        conversationId: "channel:channel-456"
       }
     ]);
+    expect(loaded.pathAllowlist).toEqual([]);
     expect(loaded.policy.authorizedUserIds).toEqual(["user-1", "user-2"]);
     expect(loaded.runtime.windows.useWsl).toBe(true);
   });
@@ -73,6 +73,17 @@ describe("setup config generation", () => {
     expect(normalizeChannelId("456")).toBe("channel:456");
     expect(normalizeChannelId("channel:456")).toBe("channel:456");
     expect(buildConversationId("channel:456", "thread:789")).toBe("channel:456/thread:789");
+  });
+
+  it("treats legacy answer-file path allowlists as optional", () => {
+    const parsed = parseSetupAnswers(
+      JSON.stringify({
+        ...answers,
+        pathAllowlist: undefined
+      })
+    );
+
+    expect(parsed.pathAllowlist).toEqual([]);
   });
 
   it("splits comma separated setup values defensively", () => {

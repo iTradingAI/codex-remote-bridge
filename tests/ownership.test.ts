@@ -36,4 +36,21 @@ describe("DiscordIngressOwnership", () => {
       }).accepted
     ).toBe(false);
   });
+
+  it("keeps different machine parent scopes isolated", () => {
+    const windows = new DiscordIngressOwnership([
+      { workspaceId: "guild:1", conversationId: "channel:win" }
+    ]);
+    const linux = new DiscordIngressOwnership([
+      { workspaceId: "guild:1", conversationId: "channel:linux" }
+    ]);
+    const linuxThread = {
+      provider: "discord" as const,
+      workspaceId: "guild:1",
+      conversationId: "channel:linux/thread:project"
+    };
+
+    expect(windows.accepts(linuxThread).accepted).toBe(false);
+    expect(linux.accepts(linuxThread).accepted).toBe(true);
+  });
 });

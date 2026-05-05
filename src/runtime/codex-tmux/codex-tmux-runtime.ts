@@ -12,7 +12,23 @@ import type { CommandRunner } from "../process.js";
 import { ExecFileCommandRunner } from "../process.js";
 import { TmuxCommandBuilder, type RuntimePlatform } from "./tmux-command-builder.js";
 
-export class CodexTmuxRuntime {
+export interface CodexRuntime {
+  detect(): Promise<RuntimeCapability>;
+  ensureSession(binding: ProjectBinding): Promise<RuntimeSession>;
+  discoverExisting(binding: ProjectBinding): Promise<RuntimeSession | null>;
+  reconcile(binding: ProjectBinding): Promise<RuntimeSession>;
+  send(session: RuntimeSession, text: string): Promise<void>;
+  sendAndWaitForOutput(
+    session: RuntimeSession,
+    text: string,
+    options?: { timeoutMs?: number; pollMs?: number; lines?: number }
+  ): Promise<string>;
+  readRecent(session: RuntimeSession, lines?: number): Promise<string>;
+  status(session: RuntimeSession): Promise<SessionStatus>;
+  stop(session: RuntimeSession): Promise<void>;
+}
+
+export class CodexTmuxRuntime implements CodexRuntime {
   private readonly runtimePlatform: RuntimePlatform;
   private readonly builder: TmuxCommandBuilder;
 

@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { hostname, platform, userInfo } from "node:os";
+import { hostname, platform } from "node:os";
 import { dirname } from "node:path";
 import { createInterface, type Interface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
@@ -113,18 +113,18 @@ export async function runSetupWizard(options: SetupOptions): Promise<void> {
       ));
     const applicationId = await askRequired(rl, "Discord application ID");
     const guildId = await askRequired(rl, "Discord guild/server ID");
-    const channelId = await askRequired(rl, "Discord channel ID");
-    const threadId = await askOptional(rl, "Discord thread ID (blank for channel binding)");
+    const channelId = await askRequired(rl, "Discord parent channel/Forum ID");
     const authorizedUserIds = splitList(
       await askRequired(rl, "Authorized Discord user IDs (comma-separated)")
     );
-    const pathAllowlist = splitList(
-      await askString(
-        rl,
-        "Project path allowlist (comma-separated)",
-        defaults.pathAllowlist.join(", ")
-      )
+    const usePathAllowlist = await askBoolean(
+      rl,
+      "Enable conservative project path allowlist?",
+      false
     );
+    const pathAllowlist = usePathAllowlist
+      ? splitList(await askString(rl, "Allowed project roots (comma-separated)", ""))
+      : [];
     const allowDirectInjection = await askBoolean(
       rl,
       "Allow ordinary messages to inject into Codex?",
@@ -142,7 +142,6 @@ export async function runSetupWizard(options: SetupOptions): Promise<void> {
       applicationId,
       guildId,
       channelId,
-      threadId,
       authorizedUserIds,
       pathAllowlist,
       allowDirectInjection,
@@ -176,7 +175,7 @@ export function buildSetupConfig(answers: SetupAnswers): GeneratedSetupConfig {
       allowed_scopes: [
         {
           workspace_id: normalizeGuildId(answers.guildId),
-          conversation_id: buildConversationId(answers.channelId, answers.threadId)
+          conversation_id: buildConversationId(answers.channelId)
         }
       ]
     },
@@ -252,7 +251,7 @@ export function parseSetupAnswers(content: string): SetupAnswers {
     channelId: requiredString(raw.channelId, "channelId"),
     threadId: optionalString(raw.threadId, "threadId"),
     authorizedUserIds: requiredStringArray(raw.authorizedUserIds, "authorizedUserIds"),
-    pathAllowlist: requiredStringArray(raw.pathAllowlist, "pathAllowlist"),
+    pathAllowlist: optionalStringArray(raw.pathAllowlist, "pathAllowlist"),
     allowDirectInjection: Boolean(raw.allowDirectInjection),
     useWsl: Boolean(raw.useWsl),
     wslCommand: raw.wslCommand || "wsl.exe",
@@ -304,6 +303,11 @@ function requiredStringArray(value: unknown, name: string): string[] {
   return value.map((item) => item.trim());
 }
 
+function optionalStringArray(value: unknown, name: string): string[] {
+  if (value == null) return [];
+  return requiredStringArray(value, name);
+}
+
 export function buildConversationId(channelId: string, threadId?: string): string {
   const channel = normalizeChannelId(channelId);
   const thread = threadId?.trim();
@@ -341,18 +345,12 @@ function defaultSetupAnswers(): Pick<
     dataDir: "./data",
     logDir: "./logs",
     tokenEnv: "DISCORD_BOT_TOKEN",
-    pathAllowlist: defaultAllowlist(),
+    pathAllowlist: [],
     useWsl: platform() === "win32",
     wslCommand: "wsl.exe",
     tmuxCommand: "tmux",
     codexCommand: "codex"
   };
-}
-
-function defaultAllowlist(): string[] {
-  if (platform() === "win32") return ["E:\\Projects"];
-  if (platform() === "darwin") return [`/Users/${userInfo().username}/Projects`];
-  return ["/srv/projects"];
 }
 
 async function askRequired(rl: Interface, prompt: string): Promise<string> {

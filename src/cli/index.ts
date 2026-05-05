@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import { createBridge } from "../app.js";
 import { loadLocalEnvFiles } from "./env.js";
-import { getDiscordToken, runHealth, runRegisterCommands, runStart } from "./operations.js";
+import { runHealth, runRegisterCommands, runStart } from "./operations.js";
 import { runSetupWizard } from "./setup.js";
-import { readHookEventFromFile, readHookEventFromStdin, routeHookEvent } from "../hooks/hook-ingress.js";
-import { DiscordProviderAdapter } from "../providers/discord/discord-provider.js";
+import { readHookEventFromFile, readHookEventFromStdin } from "../hooks/hook-ingress.js";
+import { LocalHookEventQueue } from "../hooks/local-event-queue.js";
+import { storagePaths } from "../storage/paths.js";
 
 await loadLocalEnvFiles();
 
@@ -23,26 +24,8 @@ if (command === "health") {
   try {
     const eventPath = readFlag(args, "--event-file");
     const event = eventPath ? await readHookEventFromFile(eventPath) : await readHookEventFromStdin();
-    let provider: DiscordProviderAdapter | undefined;
-    try {
-      const token = getDiscordToken(bridge.config);
-      provider = new DiscordProviderAdapter(bridge.config);
-      await provider.start(token);
-    } catch {
-      provider = undefined;
-    }
-    try {
-      const routed = await routeHookEvent({
-        config: bridge.config,
-        event,
-        bindings: bridge.bindings,
-        provider,
-        audit: bridge.audit
-      });
-      console.log(JSON.stringify(routed, null, 2));
-    } finally {
-      await provider?.destroy();
-    }
+    const queued = await new LocalHookEventQueue(storagePaths(bridge.config).eventQueueDir).enqueue(event);
+    console.log(JSON.stringify({ queued: true, path: queued, event: event.event }, null, 2));
   } finally {
     await bridge.release();
   }

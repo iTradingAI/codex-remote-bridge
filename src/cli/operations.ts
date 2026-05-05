@@ -2,6 +2,9 @@ import { createBridge } from "../app.js";
 import type { BridgeConfig } from "../types.js";
 import { DiscordProviderAdapter } from "../providers/discord/discord-provider.js";
 import { looksLikeDiscordToken } from "./env.js";
+import { LocalHookEventQueue } from "../hooks/local-event-queue.js";
+import { routeHookEvent } from "../hooks/hook-ingress.js";
+import { storagePaths } from "../storage/paths.js";
 
 export function getDiscordToken(config: BridgeConfig): string {
   if (looksLikeDiscordToken(config.discord.tokenEnv)) {
@@ -62,6 +65,11 @@ export async function runHealth(configPath: string): Promise<void> {
             application_id: bridge.config.discord.applicationId,
             guild_id: bridge.config.discord.guildId,
             allowed_scopes: bridge.config.discord.allowedScopes.length,
+            owned_parent_scope: bridge.config.discord.allowedScopes[0]?.conversationId,
+            non_standard_scope_warning:
+              bridge.config.discord.allowedScopes.length === 1
+                ? undefined
+                : "Expected exactly one parent scope per machine.",
             token_env_present: Boolean(token),
             connection: discordConnection
           },
@@ -97,10 +105,14 @@ export async function runRegisterCommands(configPath: string): Promise<void> {
 export async function runStart(configPath: string): Promise<void> {
   const bridge = await createBridge(configPath);
   const provider = new DiscordProviderAdapter(bridge.config);
+  const hookQueue = new LocalHookEventQueue(storagePaths(bridge.config).eventQueueDir);
+  let hookTimer: NodeJS.Timeout | undefined;
+  let hookDrainRunning = false;
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;
     shuttingDown = true;
+    if (hookTimer) clearInterval(hookTimer);
     await provider.destroy();
     await bridge.release();
   };
@@ -123,6 +135,33 @@ export async function runStart(configPath: string): Promise<void> {
     })
   );
   const session = await provider.start(getDiscordToken(bridge.config));
+  hookTimer = setInterval(() => {
+    if (hookDrainRunning) return;
+    hookDrainRunning = true;
+    void hookQueue
+      .drain(async (event) => {
+        await routeHookEvent({
+          config: bridge.config,
+          event,
+          bindings: bridge.bindings,
+          provider,
+          executionStates: bridge.executionStates,
+          audit: bridge.audit
+        });
+      })
+      .catch((error) => {
+        void bridge.audit.append({
+          at: new Date().toISOString(),
+          machineId: bridge.config.machineId,
+          action: "hook.drain",
+          allowed: false,
+          summary: (error as Error).message
+        });
+      })
+      .finally(() => {
+        hookDrainRunning = false;
+      });
+  }, 1000);
   console.log(
     `Discord bridge logged in as ${session.username ?? "unknown"} (${session.userId ?? "unknown id"}).`
   );

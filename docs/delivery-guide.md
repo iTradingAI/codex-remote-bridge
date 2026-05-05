@@ -4,17 +4,17 @@ This guide is for handing Codex Channel to another operator or machine owner.
 
 ## What To Deliver
 
-Deliver the git repository, not local runtime artifacts.
+Deliver the repository, not local runtime artifacts.
 
 Include:
 
-- Source code under `src/`
-- Tests under `tests/`
-- Documentation under `README.md` and `docs/`
+- source code under `src/`
+- tests under `tests/`
+- documentation under `README.md` and `docs/`
 - `config/bridge.example.json`
 - `.env.example`
 - `package.json` and `package-lock.json`
-- Planning records under `.omx/context/` and `.omx/plans/`
+- planning records under `.omx/context/` and `.omx/plans/`
 
 Do not include:
 
@@ -24,10 +24,8 @@ Do not include:
 - `logs/`
 - `.env`
 - `config/bridge.local.json`
-- Bot tokens or other secrets
+- bot tokens or other secrets
 - `.omx/logs/`, `.omx/state/`, `.omx/drafts/`
-
-The `.gitignore` already excludes the local-only paths above.
 
 ## Recipient Prerequisites
 
@@ -37,9 +35,12 @@ The receiving machine needs:
 - npm
 - Codex CLI
 - tmux
-- Discord Bot token and application details
+- Discord bot token and application details
 
-For Windows hosts, Codex CLI and tmux must be available inside WSL. The Bridge runs tmux through `wsl.exe`.
+Windows hosts:
+
+- Run Codex CLI and tmux inside WSL.
+- The Bridge uses the WSL tmux runtime on Windows.
 
 Verify runtime prerequisites:
 
@@ -85,21 +86,17 @@ The wizard creates the local config and asks for:
 
 - `machine_id`: unique physical machine name, for example `win-main`, `linux-cloud`, or `macbook`
 - Discord application ID
-- Discord guild/server ID, needed for `register-commands`
-- Discord channel ID and optional thread ID owned by this machine
+- Discord guild ID, needed for `register-commands`
+- Discord parent channel or Forum ID owned by this machine
 - Authorized Discord user IDs
-- Project path allowlist
-- Whether ordinary Discord text can inject into Codex; keep this disabled for normal handoff
+- Optional `path_allowlist` for conservative mode
+- Whether ordinary Discord text can inject into Codex
 - Windows WSL settings, when running on Windows
-- Discord Bot token value, stored in `.env.local` as `DISCORD_BOT_TOKEN`
+- Discord bot token value, stored in `.env.local` as `DISCORD_BOT_TOKEN`
 
 The token value is never written into `config/bridge.local.json`. That config stores only the environment variable name.
 
-On Windows, setup repairs common Chinese path mojibake before writing config. For example, `E:\KEHU\202603鏄庤緣` is saved as `E:\KEHU\202603明辉`.
-
-After setup, the CLI automatically runs health, registers slash commands, and starts the bridge. Use `--no-start` to stop after setup and command registration, or `--no-post-setup` to write files only.
-
-Use `--force` to overwrite an existing local config.
+After setup, the CLI can run health, register slash commands, and start the Bridge. Use `--no-start` or `--no-post-setup` if you want to stop earlier.
 
 For scripted installs, provide an answers file instead of using the prompts:
 
@@ -119,9 +116,8 @@ Example answer shape:
   "applicationId": "123",
   "guildId": "456",
   "channelId": "789",
-  "threadId": "101112",
   "authorizedUserIds": ["111"],
-  "pathAllowlist": ["E:\\Projects"],
+  "pathAllowlist": [],
   "allowDirectInjection": false,
   "useWsl": true,
   "wslCommand": "wsl.exe",
@@ -150,43 +146,51 @@ node dist/src/cli/index.js start --config config/bridge.local.json
 
 ## First Discord Smoke Test
 
-In the configured channel or thread:
+In the configured child thread:
 
 1. Run `/codex status`.
 2. Run `/codex bind path:<absolute-project-path> alias:<short-name>`.
 3. Run `/codex confirm code:<code-from-bot>`.
-4. Run `/codex start`.
+4. Run `/codex pin`.
 5. Run `/codex send text:hello from Discord`.
-6. Run `/codex status` again and confirm recent pane output appears.
+6. Run `/codex status` again and confirm the binding and session state look correct.
+7. Run `/codex unpin` and confirm the session returns to on-demand behavior.
 
-For the first handoff, bind one channel/thread to one harmless test project before binding business-critical projects.
+For the first handoff, bind one child thread to one harmless test project before binding business-critical projects.
 
 ## Multi-Machine Rule
 
-One Discord Bot can serve multiple physical machines, but each machine must run its own Bridge instance.
+One Discord bot can serve multiple physical machines, but each machine must run its own Bridge instance.
 
-Do not configure two machines with overlapping `discord.allowed_scopes`.
+Do not configure two machines with overlapping parent scopes.
 
 Recommended structure:
 
 ```text
-#codex-control
-  thread: win-main
-  thread: linux-cloud
-  thread: macbook
+#codex-windows
+  thread: project-a
+  thread: project-b
+
+#codex-linux
+  thread: project-c
+
+#codex-macos
+  thread: project-d
 ```
 
-Each machine should own only its own thread.
+Each machine should own only its own parent scope and the child threads beneath it.
 
 ## Hook Setup
 
-Codex native hooks can call:
+Codex native hooks call the local hook ingress:
 
 ```bash
 node dist/src/cli/index.js hook --config config/bridge.local.json
 ```
 
 The hook command accepts a JSON payload from stdin or from `--event-file`.
+
+The hook CLI submits events locally. The long-running Bridge owns the Discord connection.
 
 Supported MVP lifecycle events:
 
@@ -200,7 +204,8 @@ Unsupported or verbose hook events are audited but not forwarded by default.
 
 ## Operator Safety Notes
 
-- Keep `policy.allow_direct_injection` disabled unless the operator explicitly wants ordinary Discord text to enter Codex.
+- Keep ordinary Discord text injection disabled unless the operator wants it.
+- Use `path_allowlist` only for conservative mode.
 - High-risk sends are confirmation-gated and the full pending prompt text is kept only in memory, not written into `pending-approvals.json`.
 - Only one Bridge process should use a given `data_dir`; the process lock prevents accidental same-directory reuse.
 - Secrets live in `.env.local` or process environment variables, never in git or bridge config.
@@ -216,5 +221,6 @@ Unsupported or verbose hook events are audited but not forwarded by default.
 - [ ] `health` reports runtime available
 - [ ] Slash commands are registered
 - [ ] `/codex bind` + `/codex confirm` works
-- [ ] `/codex start` creates or reuses a tmux session
+- [ ] `/codex pin` creates or reuses a tmux session
 - [ ] `/codex send` reaches the correct tmux pane
+- [ ] `/codex unpin` returns the binding to on-demand behavior

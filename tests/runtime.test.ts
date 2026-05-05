@@ -133,6 +133,7 @@ function binding(projectPath: string): ProjectBinding {
     aliases: [],
     machineId: "test-machine",
     runtime: { kind: "codex-tmux", tmuxSession: "codex-test" },
+    sessionMode: "on_demand",
     policy: {
       authorizedUserIds: ["user-1"],
       allowDirectInjection: false,

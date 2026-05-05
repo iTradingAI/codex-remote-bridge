@@ -5,15 +5,18 @@ import { BindingRegistry } from "../src/core/bindings/binding-registry.js";
 import { PolicyGuard } from "../src/core/policy/policy-guard.js";
 import { ProjectPathGuard } from "../src/core/policy/project-path-guard.js";
 import { CommandRouter } from "../src/core/router/router.js";
-import type { CodexTmuxRuntime } from "../src/runtime/codex-tmux/codex-tmux-runtime.js";
+import type { CodexRuntime } from "../src/runtime/codex-tmux/codex-tmux-runtime.js";
 import { AuditLog } from "../src/storage/audit-log.js";
 import { ApprovalStore } from "../src/storage/approval-store.js";
 import {
   emptyApprovals,
   emptyBindings,
+  emptyExecutionStates,
   type BindingsDocument,
+  type ExecutionStatesDocument,
   type PendingApprovalsDocument
 } from "../src/storage/documents.js";
+import { ExecutionStateStore } from "../src/storage/execution-state-store.js";
 import { JsonFileStore } from "../src/storage/json-file-store.js";
 import { tempDir, testConfig } from "./helpers.js";
 
@@ -43,6 +46,12 @@ describe("CommandRouter", () => {
         new JsonFileStore<PendingApprovalsDocument>(join(dir, "pending.json"), emptyApprovals)
       ),
       fakeRuntime(),
+      new ExecutionStateStore(
+        new JsonFileStore<ExecutionStatesDocument>(
+          join(dir, "execution-states.json"),
+          emptyExecutionStates
+        )
+      ),
       new AuditLog(join(dir, "audit.jsonl"))
     );
 
@@ -129,6 +138,12 @@ describe("CommandRouter", () => {
       kind: "status",
       text: "recent pane output"
     });
+    expect(response.fields).toEqual(
+      expect.arrayContaining([
+        { label: "session mode", value: "on_demand" },
+        { label: "tmux state", value: "running" }
+      ])
+    );
   });
 
   it("does not persist high-risk send text in pending approvals", async () => {
@@ -203,9 +218,318 @@ describe("CommandRouter", () => {
       })
     ).toBeUndefined();
   });
+
+  it("binds arbitrary existing paths without a default allowlist", async () => {
+    const dir = await tempDir();
+    const config = testConfig({ dataDir: dir, pathAllowlist: [] });
+    const registry = new BindingRegistry(
+      config,
+      new JsonFileStore<BindingsDocument>(join(dir, "bindings.json"), emptyBindings)
+    );
+    const router = newTestRouter(dir, config, registry, new ProjectPathGuard([]));
+
+    const pending = await router.handle({
+      conversation: {
+        provider: "discord",
+        workspaceId: "guild:1",
+        conversationId: "channel:2/thread:project"
+      },
+      actor: { id: "user-1" },
+      command: "bind",
+      args: { path: dir }
+    });
+    expect(pending.kind).toBe("approval");
+  });
+
+  it("routes slash sends to the bound project session", async () => {
+    const dir = await tempDir();
+    const runtime = fakeRuntime();
+    const config = testConfig({
+      dataDir: dir,
+      policy: { authorizedUserIds: ["user-1"], allowDirectInjection: false, requireConfirmationFor: [] }
+    });
+    const registry = new BindingRegistry(
+      config,
+      new JsonFileStore<BindingsDocument>(join(dir, "bindings.json"), emptyBindings)
+    );
+    await registry.bind({
+      conversation: {
+        provider: "discord",
+        workspaceId: "guild:1",
+        conversationId: "channel:2/thread:project"
+      },
+      projectPath: dir
+    });
+    const router = newTestRouter(dir, config, registry, new ProjectPathGuard([]), runtime);
+
+    const response = await router.handle({
+      conversation: {
+        provider: "discord",
+        workspaceId: "guild:1",
+        conversationId: "channel:2/thread:project"
+      },
+      actor: { id: "user-1" },
+      command: "send",
+      args: { text: "hello" }
+    });
+
+    expect(response).toMatchObject({ kind: "summary", text: "codex replied" });
+  });
+
+  it("pins and unpins session residency", async () => {
+    const dir = await tempDir();
+    const runtime = fakeRuntime();
+    const config = testConfig({ dataDir: dir, pathAllowlist: [] });
+    const registry = new BindingRegistry(
+      config,
+      new JsonFileStore<BindingsDocument>(join(dir, "bindings.json"), emptyBindings)
+    );
+    await registry.bind({
+      conversation: {
+        provider: "discord",
+        workspaceId: "guild:1",
+        conversationId: "channel:2"
+      },
+      projectPath: dir
+    });
+    const router = newTestRouter(dir, config, registry, new ProjectPathGuard([]), runtime);
+    const conversation = {
+      provider: "discord" as const,
+      workspaceId: "guild:1",
+      conversationId: "channel:2"
+    };
+
+    await expect(
+      router.handle({ conversation, actor: { id: "user-1" }, command: "pin", args: {} })
+    ).resolves.toMatchObject({ title: "Codex session pinned" });
+    await expect(registry.findByConversation(conversation)).resolves.toMatchObject({
+      sessionMode: "pinned"
+    });
+    await expect(
+      router.handle({ conversation, actor: { id: "user-1" }, command: "unpin", args: {} })
+    ).resolves.toMatchObject({ title: "Codex session unpinned" });
+    await expect(registry.findByConversation(conversation)).resolves.toMatchObject({
+      sessionMode: "on_demand"
+    });
+  });
+
+  it("degrades stale active execution state when tmux is missing", async () => {
+    const dir = await tempDir();
+    const runtime = fakeRuntime({ discoverExisting: async () => null });
+    const config = testConfig({ dataDir: dir, pathAllowlist: [] });
+    const registry = new BindingRegistry(
+      config,
+      new JsonFileStore<BindingsDocument>(join(dir, "bindings.json"), emptyBindings)
+    );
+    const binding = await registry.bind({
+      conversation: {
+        provider: "discord",
+        workspaceId: "guild:1",
+        conversationId: "channel:2"
+      },
+      projectPath: dir
+    });
+    const executionStates = new ExecutionStateStore(
+      new JsonFileStore<ExecutionStatesDocument>(
+        join(dir, "execution-states.json"),
+        emptyExecutionStates
+      )
+    );
+    await executionStates.set(binding, "executing", "stale work");
+    const router = newTestRouter(
+      dir,
+      config,
+      registry,
+      new ProjectPathGuard([]),
+      runtime,
+      executionStates
+    );
+
+    const response = await router.handle({
+      conversation: {
+        provider: "discord",
+        workspaceId: "guild:1",
+        conversationId: "channel:2"
+      },
+      actor: { id: "user-1" },
+      command: "status",
+      args: {}
+    });
+
+    expect(response.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "execution state", value: expect.stringContaining("idle") })
+      ])
+    );
+  });
+
+  it("keeps high-risk confirmation waiting even when no tmux session exists", async () => {
+    const dir = await tempDir();
+    const runtime = fakeRuntime({ discoverExisting: async () => null });
+    const config = testConfig({ dataDir: dir, pathAllowlist: [] });
+    const registry = new BindingRegistry(
+      config,
+      new JsonFileStore<BindingsDocument>(join(dir, "bindings.json"), emptyBindings)
+    );
+    await registry.bind({
+      conversation: {
+        provider: "discord",
+        workspaceId: "guild:1",
+        conversationId: "channel:2"
+      },
+      projectPath: dir
+    });
+    const router = newTestRouter(dir, config, registry, new ProjectPathGuard([]), runtime);
+    const conversation = {
+      provider: "discord" as const,
+      workspaceId: "guild:1",
+      conversationId: "channel:2"
+    };
+
+    await expect(
+      router.handle({
+        conversation,
+        actor: { id: "user-1" },
+        command: "send",
+        args: { text: "please delete the remote branch" }
+      })
+    ).resolves.toMatchObject({ kind: "approval" });
+
+    const status = await router.handle({
+      conversation,
+      actor: { id: "user-1" },
+      command: "status",
+      args: {}
+    });
+
+    expect(status.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "execution state",
+          value: expect.stringContaining("waiting_input")
+        })
+      ])
+    );
+  });
+
+  it("marks session-start failures as failed instead of leaving execution active", async () => {
+    const dir = await tempDir();
+    const runtime = fakeRuntime({
+      ensureSession: async () => {
+        throw new Error("tmux unavailable");
+      },
+      discoverExisting: async () => null
+    });
+    const config = testConfig({ dataDir: dir, pathAllowlist: [] });
+    const registry = new BindingRegistry(
+      config,
+      new JsonFileStore<BindingsDocument>(join(dir, "bindings.json"), emptyBindings)
+    );
+    await registry.bind({
+      conversation: {
+        provider: "discord",
+        workspaceId: "guild:1",
+        conversationId: "channel:2"
+      },
+      projectPath: dir
+    });
+    const router = newTestRouter(dir, config, registry, new ProjectPathGuard([]), runtime);
+    const conversation = {
+      provider: "discord" as const,
+      workspaceId: "guild:1",
+      conversationId: "channel:2"
+    };
+
+    await expect(
+      router.handle({ conversation, actor: { id: "user-1" }, command: "start", args: {} })
+    ).resolves.toMatchObject({ kind: "error", text: "tmux unavailable" });
+
+    const status = await router.handle({
+      conversation,
+      actor: { id: "user-1" },
+      command: "status",
+      args: {}
+    });
+    expect(status.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "execution state", value: expect.stringContaining("failed") })
+      ])
+    );
+  });
+
+  it("marks confirmed send runtime failures as failed", async () => {
+    const dir = await tempDir();
+    const runtime = fakeRuntime({
+      ensureSession: async () => {
+        throw new Error("codex session failed");
+      },
+      discoverExisting: async () => null
+    });
+    const config = testConfig({ dataDir: dir, pathAllowlist: [] });
+    const registry = new BindingRegistry(
+      config,
+      new JsonFileStore<BindingsDocument>(join(dir, "bindings.json"), emptyBindings)
+    );
+    await registry.bind({
+      conversation: {
+        provider: "discord",
+        workspaceId: "guild:1",
+        conversationId: "channel:2"
+      },
+      projectPath: dir
+    });
+    const router = newTestRouter(dir, config, registry, new ProjectPathGuard([]), runtime);
+    const conversation = {
+      provider: "discord" as const,
+      workspaceId: "guild:1",
+      conversationId: "channel:2"
+    };
+
+    const approval = await router.handle({
+      conversation,
+      actor: { id: "user-1" },
+      command: "send",
+      args: { text: "delete the production branch" }
+    });
+    const code = approval.text.match(/code:([A-F0-9]+)/)?.[1];
+    expect(code).toBeDefined();
+
+    await expect(
+      router.handle({
+        conversation,
+        actor: { id: "user-1" },
+        command: "confirm",
+        args: { code }
+      })
+    ).resolves.toMatchObject({ kind: "error", text: "codex session failed" });
+
+    const status = await router.handle({
+      conversation,
+      actor: { id: "user-1" },
+      command: "status",
+      args: {}
+    });
+    expect(status.fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "execution state", value: expect.stringContaining("failed") })
+      ])
+    );
+  });
 });
 
-function newTestRouter(dir: string, config = testConfig(), registry?: BindingRegistry): CommandRouter {
+function newTestRouter(
+  dir: string,
+  config = testConfig(),
+  registry?: BindingRegistry,
+  pathGuard = new ProjectPathGuard([dir]),
+  runtime = fakeRuntime(),
+  executionStates = new ExecutionStateStore(
+    new JsonFileStore<ExecutionStatesDocument>(
+      join(dir, "execution-states.json"),
+      emptyExecutionStates
+    )
+  )
+): CommandRouter {
   const bindings =
     registry ??
     new BindingRegistry(
@@ -215,21 +539,26 @@ function newTestRouter(dir: string, config = testConfig(), registry?: BindingReg
   return new CommandRouter(
     config,
     bindings,
-    new ProjectPathGuard([dir]),
+    pathGuard,
     new PolicyGuard(config.policy),
     new ApprovalStore(
       new JsonFileStore<PendingApprovalsDocument>(join(dir, "pending.json"), emptyApprovals)
     ),
-    fakeRuntime(),
+    runtime,
+    executionStates,
     new AuditLog(join(dir, "audit.jsonl"))
   );
 }
 
-function fakeRuntime(): CodexTmuxRuntime {
+function fakeRuntime(overrides: Partial<CodexRuntime> = {}): CodexRuntime {
   return {
-    ensureSession: async () => {
-      throw new Error("should not be called");
-    },
+    ensureSession: async () => ({
+      bindingId: "binding-1",
+      machineId: "test-machine",
+      projectPath: "/tmp/project",
+      tmuxSession: "codex-test",
+      lastSeenAt: new Date().toISOString()
+    }),
     send: async () => undefined,
     sendAndWaitForOutput: async () => "codex replied",
     readRecent: async () => "recent pane output",
@@ -248,8 +577,9 @@ function fakeRuntime(): CodexTmuxRuntime {
       codexAvailable: true
     }),
     reconcile: async () => {
-      throw new Error("not implemented");
+      throw new Error("Unexpected reconcile call in router test fake");
     },
-    stop: async () => undefined
-  } as unknown as CodexTmuxRuntime;
+    stop: async () => undefined,
+    ...overrides
+  };
 }

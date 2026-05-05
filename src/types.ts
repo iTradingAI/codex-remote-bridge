@@ -22,6 +22,8 @@ export type CommandName =
   | "status"
   | "start"
   | "resume"
+  | "pin"
+  | "unpin"
   | "send"
   | "projects"
   | "use"
@@ -88,6 +90,18 @@ export interface PolicyConfig {
   requireConfirmationFor: string[];
 }
 
+export type SessionMode = "on_demand" | "pinned";
+
+export type ExecutionStateName =
+  | "idle"
+  | "received"
+  | "queued"
+  | "thinking"
+  | "executing"
+  | "waiting_input"
+  | "completed"
+  | "failed";
+
 export interface BridgeConfig {
   machineId: string;
   dataDir: string;
@@ -112,9 +126,18 @@ export interface ProjectBinding {
     tmuxSession: string;
     launch?: string;
   };
+  sessionMode: SessionMode;
   policy: PolicyConfig;
   enabled: boolean;
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface BindingExecutionState {
+  bindingId: string;
+  machineId: string;
+  state: ExecutionStateName;
+  detail?: string;
   updatedAt: string;
 }
 

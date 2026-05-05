@@ -11,11 +11,14 @@ import { ApprovalStore } from "./storage/approval-store.js";
 import {
   emptyApprovals,
   emptyBindings,
+  emptyExecutionStates,
   emptySessions,
   type BindingsDocument,
+  type ExecutionStatesDocument,
   type PendingApprovalsDocument,
   type SessionsDocument
 } from "./storage/documents.js";
+import { ExecutionStateStore } from "./storage/execution-state-store.js";
 import { JsonFileStore } from "./storage/json-file-store.js";
 import { storagePaths } from "./storage/paths.js";
 import { ProcessLock } from "./storage/process-lock.js";
@@ -35,10 +38,15 @@ export async function createBridge(configPath: string, options: CreateBridgeOpti
 
   const bindingStore = new JsonFileStore<BindingsDocument>(paths.bindings, emptyBindings);
   const sessionStore = new JsonFileStore<SessionsDocument>(paths.sessions, emptySessions);
+  const executionStateStore = new JsonFileStore<ExecutionStatesDocument>(
+    paths.executionStates,
+    emptyExecutionStates
+  );
   const approvalStore = new JsonFileStore<PendingApprovalsDocument>(paths.approvals, emptyApprovals);
   const audit = new AuditLog(paths.audit);
   const bindings = new BindingRegistry(config, bindingStore);
   const runtime = new CodexTmuxRuntime(config, sessionStore);
+  const executionStates = new ExecutionStateStore(executionStateStore);
 
   const router = new CommandRouter(
     config,
@@ -47,6 +55,7 @@ export async function createBridge(configPath: string, options: CreateBridgeOpti
     new PolicyGuard(config.policy),
     new ApprovalStore(approvalStore),
     runtime,
+    executionStates,
     audit
   );
 
@@ -54,6 +63,7 @@ export async function createBridge(configPath: string, options: CreateBridgeOpti
     config,
     bindings,
     runtime,
+    executionStates,
     router,
     audit,
     auditPath: paths.audit,

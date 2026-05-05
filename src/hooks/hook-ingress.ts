@@ -2,7 +2,8 @@ import { readFile } from "node:fs/promises";
 import type { BindingRegistry } from "../core/bindings/binding-registry.js";
 import type { DiscordProviderAdapter } from "../providers/discord/discord-provider.js";
 import type { AuditLog } from "../storage/audit-log.js";
-import type { BridgeConfig, HookEvent, OutboundMessage } from "../types.js";
+import type { ExecutionStateStore } from "../storage/execution-state-store.js";
+import type { BridgeConfig, ConversationRef, HookEvent, OutboundMessage } from "../types.js";
 
 const supportedEvents = new Set(["session-start", "needs-input", "stop", "session-end", "failed"]);
 
@@ -16,6 +17,7 @@ export function normalizeHookEvent(raw: unknown): HookEvent {
   return {
     event,
     bindingId: typeof record.binding_id === "string" ? record.binding_id : undefined,
+    conversation: parseConversation(record),
     text: typeof record.text === "string" ? record.text : undefined,
     raw
   };
@@ -40,11 +42,10 @@ export async function routeHookEvent(input: {
   event: HookEvent;
   bindings: BindingRegistry;
   provider?: DiscordProviderAdapter;
+  executionStates?: ExecutionStateStore;
   audit: AuditLog;
 }): Promise<OutboundMessage> {
-  const binding = input.event.bindingId
-    ? (await input.bindings.listForMachine()).find((item) => item.id === input.event.bindingId)
-    : undefined;
+  const binding = await findHookBinding(input.event, input.bindings);
 
   const outbound: OutboundMessage = {
     kind: input.event.event === "failed" ? "error" : "status",
@@ -68,16 +69,88 @@ export async function routeHookEvent(input: {
     summary: outbound.text
   });
 
-  if (input.provider && binding && input.event.event !== "unsupported") {
-    await input.provider.sendMessage(
-      {
-        provider: binding.provider,
-        workspaceId: binding.workspaceId,
-        conversationId: binding.conversationId
-      },
-      outbound
+  if (binding && input.event.event !== "unsupported") {
+    await input.executionStates?.set(
+      binding,
+      executionStateForHook(input.event.event),
+      outbound.text
     );
   }
 
+  if (input.provider && binding && input.event.event !== "unsupported") {
+    try {
+      await input.provider.sendMessage(
+        {
+          provider: binding.provider,
+          workspaceId: binding.workspaceId,
+          conversationId: binding.conversationId
+        },
+        outbound
+      );
+    } catch (error) {
+      await input.audit.append({
+        at: new Date().toISOString(),
+        machineId: input.config.machineId,
+        bindingId: binding.id,
+        conversation: {
+          provider: binding.provider,
+          workspaceId: binding.workspaceId,
+          conversationId: binding.conversationId
+        },
+        action: `hook:${input.event.event}:notify_failed`,
+        allowed: false,
+        summary: (error as Error).message
+      });
+    }
+  }
+
   return outbound;
+}
+
+function executionStateForHook(event: HookEvent["event"]) {
+  switch (event) {
+    case "session-start":
+      return "executing";
+    case "needs-input":
+      return "waiting_input";
+    case "session-end":
+    case "stop":
+      return "completed";
+    case "failed":
+      return "failed";
+    default:
+      return "idle";
+  }
+}
+
+async function findHookBinding(event: HookEvent, bindings: BindingRegistry) {
+  if (event.bindingId) {
+    return (await bindings.listForMachine()).find((item) => item.id === event.bindingId);
+  }
+  if (event.conversation) {
+    return bindings.findByConversation(event.conversation);
+  }
+  return undefined;
+}
+
+function parseConversation(record: Record<string, unknown>): ConversationRef | undefined {
+  if (record.conversation && typeof record.conversation === "object") {
+    const conversation = record.conversation as Record<string, unknown>;
+    return conversationFromFields(conversation);
+  }
+  return conversationFromFields(record);
+}
+
+function conversationFromFields(record: Record<string, unknown>): ConversationRef | undefined {
+  const provider = record.provider;
+  const workspaceId = record.workspace_id ?? record.workspaceId;
+  const conversationId = record.conversation_id ?? record.conversationId;
+  if (
+    (provider === "discord" || provider === "telegram" || provider === "feishu") &&
+    typeof workspaceId === "string" &&
+    typeof conversationId === "string"
+  ) {
+    return { provider, workspaceId, conversationId };
+  }
+  return undefined;
 }
