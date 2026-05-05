@@ -127,7 +127,7 @@ export class DiscordProviderAdapter {
           reason,
           action: command.command
         });
-        await this.replyToInteraction(interaction, {
+        await this.replyToInteractionSafely(interaction, {
           kind: "error",
           title: "Conversation Not Owned",
           text: `This bridge is not configured for this Discord channel/thread. ${reason}`
@@ -136,13 +136,24 @@ export class DiscordProviderAdapter {
       }
 
       const outbound = await this.commandHandler(command);
-      await this.replyToInteraction(interaction, outbound);
+      await this.replyToInteractionSafely(interaction, outbound);
     } catch (error) {
-      await this.replyToInteraction(interaction, {
+      await this.replyToInteractionSafely(interaction, {
         kind: "error",
         title: "Command Failed",
         text: (error as Error).message
       });
+    }
+  }
+
+  private async replyToInteractionSafely(
+    interaction: ChatInputCommandInteraction,
+    message: OutboundMessage
+  ): Promise<void> {
+    try {
+      await this.replyToInteraction(interaction, message);
+    } catch (error) {
+      console.error(`Failed to reply to Discord interaction: ${(error as Error).message}`);
     }
   }
 
