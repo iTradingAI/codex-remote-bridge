@@ -85,7 +85,7 @@ export async function runHealth(configPath: string): Promise<void> {
 }
 
 export async function runRegisterCommands(configPath: string): Promise<void> {
-  const bridge = await createBridge(configPath);
+  const bridge = await createBridge(configPath, { acquireLock: false });
   try {
     const provider = new DiscordProviderAdapter(bridge.config);
     await provider.registerSlashCommands(getDiscordToken(bridge.config));
@@ -173,6 +173,10 @@ export async function runStart(configPath: string): Promise<void> {
     summary: `Logged in as ${session.username ?? "unknown"} (${session.userId ?? "unknown id"})`
   });
   await waitForever();
+}
+
+export function isBridgeLockError(error: unknown): boolean {
+  return (error as Error).message?.includes("Bridge data directory is already locked") ?? false;
 }
 
 function waitForever(): Promise<never> {

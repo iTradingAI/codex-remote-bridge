@@ -5,7 +5,7 @@ import { dirname } from "node:path";
 import { createInterface, type Interface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { isEnvVarName, looksLikeDiscordToken, upsertLocalEnvValue } from "./env.js";
-import { runHealth, runRegisterCommands, runStart } from "./operations.js";
+import { isBridgeLockError, runHealth, runRegisterCommands, runStart } from "./operations.js";
 import { repairUtf8DecodedAsGbkList } from "../encoding/mojibake.js";
 
 const CONFIRMATION_KEYWORDS = ["commit", "push", "merge", "delete", "deploy", "reset"];
@@ -228,7 +228,16 @@ async function runPostSetup(options: SetupOptions): Promise<void> {
   }
 
   output.write("Starting bridge. Leave this terminal open.\n");
-  await runStart(options.outputPath);
+  try {
+    await runStart(options.outputPath);
+  } catch (error) {
+    if (!isBridgeLockError(error)) {
+      throw error;
+    }
+    output.write(
+      "Bridge is already running for this data directory. Slash commands are registered; keep the existing bridge terminal open.\n"
+    );
+  }
 }
 
 async function readAnswersFile(path: string): Promise<SetupAnswers> {
