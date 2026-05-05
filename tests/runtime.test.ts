@@ -97,7 +97,7 @@ describe("CodexTmuxRuntime", () => {
   it("waits for pane output after sending text", async () => {
     const dir = await tempDir();
     const runner = new FakeRunner();
-    runner.paneOutputs = ["before\n", "hello\n", "hello\nCodex response\n"];
+    runner.paneOutputs = ["before\n", "hello\n", "hello\nCodex response\n─ Worked for 1s ─\n"];
     const runtime = new CodexTmuxRuntime(
       testConfig({ dataDir: dir }),
       new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions),
@@ -119,6 +119,37 @@ describe("CodexTmuxRuntime", () => {
     expect(output).toContain("Codex response");
     expect(output).not.toContain("before");
     expect(output).not.toContain("hello");
+  });
+
+  it("waits past intermediate Codex output until the completion marker appears", async () => {
+    const dir = await tempDir();
+    const runner = new FakeRunner();
+    runner.paneOutputs = [
+      "before\n",
+      "hello\n• Ran git status\n",
+      "hello\n• Ran git status\n",
+      "hello\n• Ran git status\nFinal answer\n─ Worked for 5s ─\n"
+    ];
+    const runtime = new CodexTmuxRuntime(
+      testConfig({ dataDir: dir }),
+      new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions),
+      runner
+    );
+
+    const output = await runtime.sendAndWaitForOutput(
+      {
+        bindingId: "binding-1",
+        machineId: "test-machine",
+        projectPath: dir,
+        tmuxSession: "codex-test",
+        lastSeenAt: new Date().toISOString()
+      },
+      "hello",
+      { timeoutMs: 3000, pollMs: 1 }
+    );
+
+    expect(output).toContain("Final answer");
+    expect(output).toContain("Worked for 5s");
   });
 
   it("extracts only newly added pane output after the prompt echo", () => {

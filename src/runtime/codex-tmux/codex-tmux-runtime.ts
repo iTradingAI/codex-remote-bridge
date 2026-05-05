@@ -120,21 +120,25 @@ export class CodexTmuxRuntime implements CodexRuntime {
     const before = await this.readRecent(session, options.lines ?? 80).catch(() => "");
     await this.send(session, text);
 
-    const timeoutMs = options.timeoutMs ?? 12000;
+    const timeoutMs = options.timeoutMs ?? 120000;
     const pollMs = options.pollMs ?? 1000;
     const deadline = Date.now() + timeoutMs;
     let latest = "";
+    let bestOutput = "";
 
     while (Date.now() < deadline) {
       await sleep(pollMs);
       latest = await this.readRecent(session, options.lines ?? 80).catch(() => latest);
       const output = outputAfterSend(before, latest, text);
       if (output) {
+        bestOutput = output;
+      }
+      if (output && (looksComplete(output) || needsUserInput(output))) {
         return output;
       }
     }
 
-    return outputAfterSend(before, latest, text) || latest || before;
+    return bestOutput || outputAfterSend(before, latest, text) || latest || before;
   }
 
   async readRecent(session: RuntimeSession, lines = 80): Promise<string> {
@@ -219,6 +223,19 @@ function commonPrefixLength(left: string, right: string): number {
     index += 1;
   }
   return index;
+}
+
+function looksComplete(output: string): boolean {
+  return /Worked for\s+\S+/i.test(output);
+}
+
+function needsUserInput(output: string): boolean {
+  return [
+    /Do you trust the contents of this directory\?/i,
+    /Press enter to continue/i,
+    /Reply with .*code:/i,
+    /Confirmation code/i
+  ].some((pattern) => pattern.test(output));
 }
 
 function sleep(ms: number): Promise<void> {

@@ -350,9 +350,9 @@ export class CommandRouter {
       await this.executionStates.set(binding, "executing", "Sending text to Codex.");
       const session = await this.runtime.ensureSession(binding);
       recent = await this.runtime.sendAndWaitForOutput(session, text, {
-        timeoutMs: 12000,
+        timeoutMs: 120000,
         pollMs: 1000,
-        lines: 80
+        lines: 200
       });
       await this.executionStates.set(
         binding,
