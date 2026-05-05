@@ -59,59 +59,10 @@ export class DiscordProviderAdapter {
       throw new Error("discord.guild_id is required for development slash command registration");
     }
 
-    const commands = [
-      new SlashCommandBuilder()
-        .setName("codex")
-        .setDescription("Control local Codex bridge sessions")
-        .addSubcommand((subcommand) =>
-          subcommand
-            .setName("bind")
-            .setDescription("Bind this conversation to a local project")
-            .addStringOption((option) =>
-              option.setName("path").setDescription("Absolute project path").setRequired(true)
-            )
-            .addStringOption((option) =>
-              option.setName("alias").setDescription("Short project alias").setRequired(false)
-            )
-        )
-        .addSubcommand((subcommand) =>
-          subcommand
-            .setName("confirm")
-            .setDescription("Confirm a pending bridge action")
-            .addStringOption((option) =>
-              option.setName("code").setDescription("Confirmation code").setRequired(true)
-            )
-        )
-        .addSubcommand((subcommand) =>
-          subcommand.setName("unbind").setDescription("Unbind this conversation")
-        )
-        .addSubcommand((subcommand) => subcommand.setName("status").setDescription("Show status"))
-        .addSubcommand((subcommand) => subcommand.setName("start").setDescription("Start Codex"))
-        .addSubcommand((subcommand) => subcommand.setName("resume").setDescription("Resume Codex"))
-        .addSubcommand((subcommand) =>
-          subcommand.setName("pin").setDescription("Keep this project's Codex session resident")
-        )
-        .addSubcommand((subcommand) =>
-          subcommand.setName("unpin").setDescription("Return this project to on-demand sessions")
-        )
-        .addSubcommand((subcommand) =>
-          subcommand
-            .setName("send")
-            .setDescription("Send text to Codex")
-            .addStringOption((option) =>
-              option.setName("text").setDescription("Text to send").setRequired(true)
-            )
-        )
-        .addSubcommand((subcommand) =>
-          subcommand.setName("projects").setDescription("List bound projects")
-        )
-        .toJSON()
-    ];
-
     const rest = new REST({ version: "10" }).setToken(token);
     await rest.put(
       Routes.applicationGuildCommands(this.config.discord.applicationId, this.config.discord.guildId),
-      { body: commands }
+      { body: buildCodexSlashCommands() }
     );
   }
 
@@ -267,6 +218,60 @@ export class DiscordProviderAdapter {
       messageId: interaction.id
     };
   }
+}
+
+export function buildCodexSlashCommands() {
+  return [
+    new SlashCommandBuilder()
+      .setName("codex")
+      .setDescription("连接本机 Codex 项目会话")
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName("bind")
+          .setDescription("绑定当前频道到一个本机项目目录")
+          .addStringOption((option) =>
+            option
+              .setName("path")
+              .setDescription("本机项目绝对路径，例如 E:\\Projects\\demo 或 /srv/app")
+              .setRequired(true)
+          )
+          .addStringOption((option) =>
+            option.setName("alias").setDescription("项目别名，可用于人工识别").setRequired(false)
+          )
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName("confirm")
+          .setDescription("确认绑定或高风险操作")
+          .addStringOption((option) =>
+            option.setName("code").setDescription("Bot 给出的确认码").setRequired(true)
+          )
+      )
+      .addSubcommand((subcommand) =>
+        subcommand.setName("unbind").setDescription("解除当前频道的项目绑定")
+      )
+      .addSubcommand((subcommand) => subcommand.setName("status").setDescription("查看当前项目状态"))
+      .addSubcommand((subcommand) => subcommand.setName("start").setDescription("启动当前项目的 Codex 会话"))
+      .addSubcommand((subcommand) => subcommand.setName("resume").setDescription("恢复或接入当前项目会话"))
+      .addSubcommand((subcommand) =>
+        subcommand.setName("pin").setDescription("让当前项目会话保持驻留")
+      )
+      .addSubcommand((subcommand) =>
+        subcommand.setName("unpin").setDescription("解除驻留，恢复按需启动")
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName("send")
+          .setDescription("向当前项目的 Codex 发送消息")
+          .addStringOption((option) =>
+            option.setName("text").setDescription("要发送给 Codex 的内容").setRequired(true)
+          )
+      )
+      .addSubcommand((subcommand) =>
+        subcommand.setName("projects").setDescription("列出本机已绑定项目")
+      )
+      .toJSON()
+  ];
 }
 
 async function deferInteraction(interaction: ChatInputCommandInteraction): Promise<void> {

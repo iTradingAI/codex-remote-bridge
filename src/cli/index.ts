@@ -40,12 +40,21 @@ try {
       startAfterSetup: !hasFlag(args, "--no-start")
     });
   } else {
-    console.log(`Usage:
+    console.log(`用法:
   codex-channel setup [--output config/bridge.local.json] [--force] [--answers setup-answers.json] [--no-start] [--no-post-setup]
+    初始化配置。默认会健康检查、注册 Discord 命令，并启动 Bridge。
+
   codex-channel health --config config/bridge.local.json
+    检查本机 Bridge 配置、Discord 连接、tmux/Codex 可用性和已绑定项目。
+
   codex-channel register-commands --config config/bridge.local.json
+    注册或刷新 Discord slash commands。Bridge 已运行时也可以执行。
+
   codex-channel hook --config config/bridge.local.json [--event-file event.json]
-  codex-channel start --config config/bridge.local.json`);
+    写入本机 hook 事件队列，由正在运行的 Bridge 转发到 Discord。
+
+  codex-channel start --config config/bridge.local.json
+    启动本机 Bridge 驻留进程。每台真实电脑只需要一个。`);
   }
 } catch (error) {
   console.error(formatCliError(error));
