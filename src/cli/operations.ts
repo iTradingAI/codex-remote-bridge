@@ -1,6 +1,7 @@
 import { createBridge } from "../app.js";
 import type { BridgeConfig } from "../types.js";
 import { DiscordProviderAdapter } from "../providers/discord/discord-provider.js";
+import { isNetworkError } from "./errors.js";
 import { looksLikeDiscordToken } from "./env.js";
 import { LocalHookEventQueue } from "../hooks/local-event-queue.js";
 import { routeHookEvent } from "../hooks/hook-ingress.js";
@@ -88,7 +89,10 @@ export async function runRegisterCommands(configPath: string): Promise<void> {
   const bridge = await createBridge(configPath, { acquireLock: false });
   try {
     const provider = new DiscordProviderAdapter(bridge.config);
-    await provider.registerSlashCommands(getDiscordToken(bridge.config));
+    await retryDiscordOperation(
+      () => provider.registerSlashCommands(getDiscordToken(bridge.config)),
+      "register Discord slash commands"
+    );
     console.log("Discord slash commands registered.");
     await bridge.audit.append({
       at: new Date().toISOString(),
@@ -177,6 +181,27 @@ export async function runStart(configPath: string): Promise<void> {
 
 export function isBridgeLockError(error: unknown): boolean {
   return (error as Error).message?.includes("Bridge data directory is already locked") ?? false;
+}
+
+async function retryDiscordOperation<T>(operation: () => Promise<T>, label: string): Promise<T> {
+  const attempts = 3;
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isNetworkError(error) || attempt === attempts) break;
+      const delayMs = 1000 * attempt;
+      console.warn(`${label} failed due to network timeout; retrying (${attempt}/${attempts})...`);
+      await sleep(delayMs);
+    }
+  }
+  throw lastError;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function waitForever(): Promise<never> {
