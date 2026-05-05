@@ -35,7 +35,8 @@ export class TmuxCommandBuilder {
       this.sessionName(binding),
       "-c",
       this.projectPath(binding.projectPath),
-      this.config.runtime.codexCommand
+      this.config.runtime.codexCommand,
+      "--no-alt-screen"
     ]);
   }
 

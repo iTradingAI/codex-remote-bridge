@@ -21,7 +21,8 @@ describe("TmuxCommandBuilder", () => {
         "codex-binding-1",
         "-c",
         "E:\\Projects\\codex-channel",
-        "codex"
+        "codex",
+        "--no-alt-screen"
       ]
     });
   });
@@ -39,7 +40,8 @@ describe("TmuxCommandBuilder", () => {
         "codex-binding-1",
         "-c",
         "/mnt/e/Projects/codex-channel",
-        "codex"
+        "codex",
+        "--no-alt-screen"
       ]
     });
   });
