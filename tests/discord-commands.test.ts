@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildCodexSlashCommands } from "../src/providers/discord/discord-provider.js";
+import {
+  buildCodexSlashCommands,
+  shouldIgnoreMessage
+} from "../src/providers/discord/discord-provider.js";
 
 interface CommandOptionWithChildren {
   name: string;
@@ -46,5 +49,26 @@ describe("Discord slash commands", () => {
         })
       ])
     );
+  });
+
+  it("ignores bot and Discord system messages", () => {
+    expect(
+      shouldIgnoreMessage({
+        author: { bot: false },
+        system: true
+      } as Parameters<typeof shouldIgnoreMessage>[0])
+    ).toBe(true);
+    expect(
+      shouldIgnoreMessage({
+        author: { bot: true },
+        system: false
+      } as Parameters<typeof shouldIgnoreMessage>[0])
+    ).toBe(true);
+    expect(
+      shouldIgnoreMessage({
+        author: { bot: false },
+        system: false
+      } as Parameters<typeof shouldIgnoreMessage>[0])
+    ).toBe(false);
   });
 });

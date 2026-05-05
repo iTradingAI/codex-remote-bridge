@@ -178,7 +178,7 @@ export class DiscordProviderAdapter {
   }
 
   private async handleMessage(message: Message): Promise<void> {
-    if (!this.commandHandler || message.author.bot) return;
+    if (!this.commandHandler || shouldIgnoreMessage(message)) return;
     try {
       await reactToMessage(message, MESSAGE_STATUS_REACTIONS.received);
       const conversation = conversationFromMessage(message);
@@ -204,17 +204,15 @@ export class DiscordProviderAdapter {
         rawText: message.content,
         messageId: message.id
       });
-      await message.reply(formatOutbound(outbound));
+      await replyToMessageSafely(message, outbound);
       await reactToMessage(message, MESSAGE_STATUS_REACTIONS.done);
     } catch (error) {
       await reactToMessage(message, MESSAGE_STATUS_REACTIONS.failed);
-      await message.reply(
-        formatOutbound({
+      await replyToMessageSafely(message, {
           kind: "error",
           title: "Message Failed",
           text: (error as Error).message
-        })
-      );
+      });
     }
   }
 
@@ -289,6 +287,10 @@ export function buildCodexSlashCommands() {
   ];
 }
 
+export function shouldIgnoreMessage(message: Pick<Message, "author" | "system">): boolean {
+  return message.author.bot || message.system;
+}
+
 async function deferInteraction(interaction: ChatInputCommandInteraction): Promise<void> {
   if (interaction.deferred || interaction.replied) return;
   await interaction.deferReply();
@@ -296,6 +298,24 @@ async function deferInteraction(interaction: ChatInputCommandInteraction): Promi
 
 async function reactToMessage(message: Message, emoji: string): Promise<void> {
   await message.react(emoji).catch(() => undefined);
+}
+
+async function replyToMessageSafely(message: Message, outbound: OutboundMessage): Promise<void> {
+  const payload = formatOutbound(outbound);
+  try {
+    await message.reply(payload);
+    return;
+  } catch (error) {
+    console.error(`Failed to reply to Discord message: ${(error as Error).message}`);
+  }
+
+  try {
+    if ("send" in message.channel && typeof message.channel.send === "function") {
+      await message.channel.send(payload);
+    }
+  } catch (error) {
+    console.error(`Failed to send fallback Discord message: ${(error as Error).message}`);
+  }
 }
 
 export function discordTargetChannelId(target: ConversationRef): string {
