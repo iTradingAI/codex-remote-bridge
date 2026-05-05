@@ -107,7 +107,9 @@ export class DiscordProviderAdapter {
     if (!channel || !("send" in channel) || typeof channel.send !== "function") {
       throw new Error(`Discord target is not sendable: ${target.conversationId}`);
     }
-    await channel.send(formatOutbound(message));
+    for (const payload of formatOutboundParts(message)) {
+      await channel.send(payload);
+    }
   }
 
   private async handleInteraction(interaction: Interaction): Promise<void> {
@@ -167,16 +169,24 @@ export class DiscordProviderAdapter {
     interaction: ChatInputCommandInteraction,
     message: OutboundMessage
   ): Promise<void> {
-    const payload = formatOutbound(message);
+    const [first, ...rest] = formatOutboundParts(message);
     if (interaction.deferred && !interaction.replied) {
-      await interaction.editReply(payload);
+      await interaction.editReply(first);
+      for (const payload of rest) {
+        await interaction.followUp(payload);
+      }
       return;
     }
     if (interaction.replied) {
-      await interaction.followUp(payload);
+      for (const payload of [first, ...rest]) {
+        await interaction.followUp(payload);
+      }
       return;
     }
-    await interaction.reply(payload);
+    await interaction.reply(first);
+    for (const payload of rest) {
+      await interaction.followUp(payload);
+    }
   }
 
   private async handleMessage(message: Message): Promise<void> {
@@ -309,20 +319,26 @@ async function reactToMessage(message: Message, emoji: string): Promise<void> {
 }
 
 async function replyToMessageSafely(message: Message, outbound: OutboundMessage): Promise<void> {
-  const payload = formatOutbound(outbound);
+  const [first, ...rest] = formatOutboundParts(outbound);
   try {
-    await message.reply(payload);
+    await message.reply(first);
+    await sendAdditionalParts(message, rest);
     return;
   } catch (error) {
     console.error(`Failed to reply to Discord message: ${(error as Error).message}`);
   }
 
   try {
-    if ("send" in message.channel && typeof message.channel.send === "function") {
-      await message.channel.send(payload);
-    }
+    await sendAdditionalParts(message, [first, ...rest]);
   } catch (error) {
     console.error(`Failed to send fallback Discord message: ${(error as Error).message}`);
+  }
+}
+
+async function sendAdditionalParts(message: Message, payloads: string[]): Promise<void> {
+  if (!("send" in message.channel) || typeof message.channel.send !== "function") return;
+  for (const payload of payloads) {
+    await message.channel.send(payload);
   }
 }
 
@@ -333,7 +349,9 @@ async function sendToInteractionChannelSafely(
   const channel = interaction.channel;
   if (!channel || !("send" in channel) || typeof channel.send !== "function") return;
   try {
-    await channel.send(formatOutbound(outbound));
+    for (const payload of formatOutboundParts(outbound)) {
+      await channel.send(payload);
+    }
     console.info(`Discord interaction fallback channel message sent: ${interaction.id}`);
   } catch (error) {
     console.error(`Failed to send fallback Discord interaction message: ${(error as Error).message}`);
@@ -379,10 +397,38 @@ export function conversationFromMessage(message: Message): ConversationRef {
 }
 
 export function formatOutbound(message: OutboundMessage): string {
+  return formatOutboundParts(message)[0] ?? "";
+}
+
+export function formatOutboundParts(message: OutboundMessage): string[] {
   const title = message.title ? `**${message.title}**\n` : "";
   const fields =
     message.fields && message.fields.length > 0
       ? `\n${message.fields.map((field) => `**${field.label}:** ${field.value}`).join("\n")}`
       : "";
-  return `${title}${message.text}${fields}`.slice(0, 1900);
+  return splitDiscordMessage(`${title}${message.text}${fields}`);
+}
+
+function splitDiscordMessage(text: string): string[] {
+  const limit = 1900;
+  const parts: string[] = [];
+  let remaining = text;
+
+  while (remaining.length > limit) {
+    const splitAt = bestSplitIndex(remaining, limit);
+    parts.push(remaining.slice(0, splitAt).trimEnd());
+    remaining = remaining.slice(splitAt).trimStart();
+  }
+  if (remaining.length > 0 || parts.length === 0) {
+    parts.push(remaining);
+  }
+  return parts;
+}
+
+function bestSplitIndex(text: string, limit: number): number {
+  const newline = text.lastIndexOf("\n", limit);
+  if (newline > limit * 0.6) return newline + 1;
+  const space = text.lastIndexOf(" ", limit);
+  if (space > limit * 0.6) return space + 1;
+  return limit;
 }

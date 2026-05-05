@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCodexSlashCommands,
+  formatOutboundParts,
   shouldIgnoreMessage
 } from "../src/providers/discord/discord-provider.js";
 
@@ -70,5 +71,20 @@ describe("Discord slash commands", () => {
         system: false
       } as Parameters<typeof shouldIgnoreMessage>[0])
     ).toBe(false);
+  });
+
+  it("splits long outbound messages without truncating content", () => {
+    const text = Array.from({ length: 120 }, (_, index) => `line ${index}: ${"x".repeat(40)}`).join(
+      "\n"
+    );
+    const parts = formatOutboundParts({
+      kind: "summary",
+      title: "Codex Output",
+      text
+    });
+
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.every((part) => part.length <= 1900)).toBe(true);
+    expect(parts.join("\n")).toContain("line 119");
   });
 });

@@ -167,6 +167,23 @@ describe("CodexTmuxRuntime", () => {
 
     expect(outputAfterSend(before, latest, "检查当前git状态")).toBe("当前仓库在 main 分支。");
   });
+  it("does not resend old scrollback when the tmux viewport shifts", () => {
+    const before = [
+      "banner",
+      "old status",
+      "old response",
+      "stable tail"
+    ].join("\n");
+    const latest = [
+      "old response",
+      "stable tail",
+      "> new task",
+      "",
+      "fresh answer"
+    ].join("\n");
+
+    expect(outputAfterSend(before, latest, "new task")).toBe("fresh answer");
+  });
 });
 
 function argAfter(args: string[], flag: string): string | undefined {

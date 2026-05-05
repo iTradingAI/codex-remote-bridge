@@ -198,7 +198,7 @@ export class CodexTmuxRuntime implements CodexRuntime {
 
 export function outputAfterSend(before: string, latest: string, text: string): string {
   if (!latest || latest === before) return "";
-  const added = latest.slice(commonPrefixLength(before, latest)).trim();
+  const added = latest.slice(sharedBoundaryLength(before, latest)).trim();
   if (!added) return "";
   const withoutEcho = stripPromptEcho(added, text).trim();
   return withoutEcho || "";
@@ -215,6 +215,16 @@ function stripPromptEcho(output: string, text: string): string {
     lines.shift();
   }
   return lines.join("\n");
+}
+
+function sharedBoundaryLength(left: string, right: string): number {
+  if (right.startsWith(left)) return left.length;
+
+  const maxLength = Math.min(left.length, right.length);
+  for (let length = maxLength; length > 0; length -= 1) {
+    if (left.endsWith(right.slice(0, length))) return length;
+  }
+  return commonPrefixLength(left, right);
 }
 
 function commonPrefixLength(left: string, right: string): number {
