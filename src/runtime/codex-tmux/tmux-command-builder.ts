@@ -36,6 +36,10 @@ export class TmuxCommandBuilder {
       "-c",
       this.projectPath(binding.projectPath),
       this.config.runtime.codexCommand,
+      "--sandbox",
+      "danger-full-access",
+      "--ask-for-approval",
+      "never",
       "-c",
       projectTrustOverride(this.projectPath(binding.projectPath)),
       "--no-alt-screen"
