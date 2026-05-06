@@ -134,14 +134,15 @@ export class CodexTmuxRuntime implements CodexRuntime {
     while (Date.now() < deadline) {
       await sleep(pollMs);
       latest = await this.readRecent(session, options.lines ?? 80).catch(() => latest);
-      const output = outputAfterSend(before, latest, text);
+      const rawOutput = rawOutputAfterSend(before, latest, text);
+      const output = cleanCodexOutputForDiscord(rawOutput);
       if (output) {
         if (output !== bestOutput || stableSince === 0) {
           stableSince = Date.now();
         }
         bestOutput = output;
       }
-      if (output && (looksComplete(output) || needsUserInput(output))) {
+      if (output && (looksComplete(rawOutput) || needsUserInput(rawOutput))) {
         await this.saveOutputCursor(session, latest, options.messageId);
         return output;
       }
@@ -273,6 +274,10 @@ export interface SendAndWaitOptions {
 }
 
 export function outputAfterSend(before: string, latest: string, text: string): string {
+  return cleanCodexOutputForDiscord(rawOutputAfterSend(before, latest, text));
+}
+
+function rawOutputAfterSend(before: string, latest: string, text: string): string {
   if (!latest || latest === before) return "";
   const anchored = outputAfterPromptEcho(latest, text);
   if (anchored != null) return anchored;
@@ -306,6 +311,108 @@ function stripPromptEcho(output: string, text: string): string {
     lines.shift();
   }
   return lines.join("\n");
+}
+
+export function cleanCodexOutputForDiscord(output: string): string {
+  const cleaned = stripCodexTuiNoise(output);
+  return cleaned || output.trim();
+}
+
+function stripCodexTuiNoise(output: string): string {
+  const lines = truncateAtNextPrompt(output.split(/\r?\n/));
+  const kept: string[] = [];
+  let skippingTraceBlock = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (kept.length > 0 && kept[kept.length - 1] !== "") {
+        kept.push("");
+      }
+      continue;
+    }
+
+    if (isCodexSeparatorLine(trimmed) || isCodexWorkedLine(trimmed) || isCodexStatusLine(trimmed)) {
+      skippingTraceBlock = false;
+      trimTrailingBlank(kept);
+      continue;
+    }
+
+    if (isCodexTraceStart(trimmed)) {
+      skippingTraceBlock = true;
+      trimTrailingBlank(kept);
+      continue;
+    }
+
+    if (skippingTraceBlock) {
+      if (isAssistantMessageStart(trimmed)) {
+        skippingTraceBlock = false;
+      } else if (isCodexTraceContinuation(trimmed)) {
+        continue;
+      } else {
+        skippingTraceBlock = false;
+      }
+    }
+
+    if (!skippingTraceBlock) {
+      kept.push(stripAssistantBullet(line).trimEnd());
+    }
+  }
+
+  trimTrailingBlank(kept);
+  return kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function truncateAtNextPrompt(lines: string[]): string[] {
+  const nextPrompt = lines.findIndex((line) => isCodexNextPromptLine(line.trim()));
+  if (nextPrompt >= 0) {
+    return lines.slice(0, nextPrompt);
+  }
+  return lines;
+}
+
+function isCodexNextPromptLine(line: string): boolean {
+  return /^(›|鈥?|閳?)\s+\S/u.test(line);
+}
+
+function isCodexSeparatorLine(line: string): boolean {
+  return /^[─━═\-_\s]{8,}$/u.test(line);
+}
+
+function isCodexWorkedLine(line: string): boolean {
+  return /Worked for\s+\S+/i.test(line);
+}
+
+function isCodexStatusLine(line: string): boolean {
+  return /^gpt-\S+\s+\S+\s+·\s+/u.test(line);
+}
+
+function isCodexTraceStart(line: string): boolean {
+  return /^(•|鈥?|閳?)\s*(Ran|Explored|Read|Search|Edited|Updated|Listed|Opened|Checked|Found|Grep)\b/i.test(line);
+}
+
+function isAssistantMessageStart(line: string): boolean {
+  return /^(•|鈥?|閳?)\s+\S/u.test(line) && !isCodexTraceStart(line);
+}
+
+function isCodexTraceContinuation(line: string): boolean {
+  return (
+    /^[│└├┌┐┘┤╭╰╯╮]/u.test(line) ||
+    /^… \+\d+ lines?/u.test(line) ||
+    /^\d+ files? changed/u.test(line) ||
+    /^(create|delete|rename) mode \d+/u.test(line) ||
+    /^[MADRCU?!]{1,2}\s+\S/u.test(line)
+  );
+}
+
+function stripAssistantBullet(line: string): string {
+  return line.replace(/^\s*(•|鈥?|閳?)\s+/u, "");
+}
+
+function trimTrailingBlank(lines: string[]): void {
+  while (lines[lines.length - 1] === "") {
+    lines.pop();
+  }
 }
 
 function isPromptEchoLine(line: string, text: string): boolean {

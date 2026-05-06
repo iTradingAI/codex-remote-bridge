@@ -149,7 +149,56 @@ describe("CodexTmuxRuntime", () => {
     );
 
     expect(output).toContain("Final answer");
-    expect(output).toContain("Worked for 5s");
+    expect(output).not.toContain("Ran git status");
+    expect(output).not.toContain("Worked for 5s");
+  });
+
+  it("cleans Codex TUI traces from captured Discord output", () => {
+    const latest = [
+      "> commit changes",
+      "",
+      "• Ran GIT_AUTHOR_NAME='Max.King' git commit -m \"Support custom content pages\"",
+      "  │ commit -m \"Support custom content pages\"",
+      "  └ [main 2ca8b70] Support custom content pages",
+      "     10 files changed, 2839 insertions(+), 425 deletions(-)",
+      "     create mode 100644 wpcn/views/contact.twig.html",
+      "",
+      "────────────────────────────────────────────────────────────────────────────────",
+      "",
+      "• commit 已创建。我再检查一次状态和最新提交，确认暂存区已清空。",
+      "",
+      "• Ran git status --short --branch",
+      "  └ ## main",
+      "",
+      "────────────────────────────────────────────────────────────────────────────────",
+      "",
+      "• 已完成 git commit。",
+      "",
+      "  提交信息：",
+      "",
+      "  2ca8b70 Support custom content pages for Minghui site",
+      "",
+      "  当前状态干净：",
+      "",
+      "  ## main",
+      "",
+      "─ Worked for 1m 05s ────────────────────────────────────────────────────────────",
+      "",
+      "",
+      "› Improve documentation in @filename",
+      "",
+      "  gpt-5.5 medium · /mnt/e/KEHU/202603明辉 · main · Context 9% used"
+    ].join("\n");
+
+    const output = outputAfterSend("", latest, "commit changes");
+
+    expect(output).toContain("已完成 git commit。");
+    expect(output).toContain("2ca8b70 Support custom content pages for Minghui site");
+    expect(output).not.toContain("• Ran");
+    expect(output).not.toContain("GIT_AUTHOR_NAME");
+    expect(output).not.toContain("Worked for");
+    expect(output).not.toContain("Improve documentation");
+    expect(output).not.toContain("gpt-5.5 medium");
   });
 
   it("extracts only newly added pane output after the prompt echo", () => {
