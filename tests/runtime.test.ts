@@ -251,6 +251,64 @@ describe("CodexTmuxRuntime", () => {
     expect(output).not.toContain("model: gpt-5.5");
   });
 
+  it("waits past stable intermediate output while Codex is still working", async () => {
+    const dir = await tempDir();
+    const runner = new FakeRunner();
+    const intermediate = [
+      "> deploy contact changes",
+      "",
+      "当前工具只返回了“命令/权限/路径失败”的分类提示，没有展开细节。我改用更细的命令",
+      "逐项定位。",
+      "• Explored",
+      "  └ List .ssh",
+      "    List .ssh",
+      "",
+      "• 本机 ~/.ssh 里没有配置文件指定的 id_rsa 私钥，所以按现有配置无法直接登录。下一",
+      "  步我会查找项目或 Windows 用户目录里是否有可用的私钥路径。",
+      "",
+      "• Ran find ~/.ssh -maxdepth 1 -type f -printf '%f\\n' 2>/dev/null",
+      "  └ known_hosts",
+      "",
+      "◦ Working (32s • esc to interrupt)"
+    ].join("\n");
+    runner.paneOutputs = [
+      "before\n",
+      intermediate,
+      intermediate,
+      [
+        intermediate,
+        "",
+        "已上传到服务器。",
+        "",
+        "上传目标：",
+        "47.103.138.113:/www/wwwroot/minghui.w2.csite.cc/wp-content/themes/wpcn/",
+        "",
+        "─ Worked for 2m 11s ─"
+      ].join("\n")
+    ];
+    const runtime = new CodexTmuxRuntime(
+      testConfig({ dataDir: dir }),
+      new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions),
+      runner
+    );
+
+    const output = await runtime.sendAndWaitForOutput(
+      {
+        bindingId: "binding-1",
+        machineId: "test-machine",
+        projectPath: dir,
+        tmuxSession: "codex-test",
+        lastSeenAt: new Date().toISOString()
+      },
+      "deploy contact changes",
+      { timeoutMs: 3000, pollMs: 1, stableMs: 1 }
+    );
+
+    expect(output).toContain("已上传到服务器");
+    expect(output).toContain("47.103.138.113");
+    expect(output).not.toBe(intermediate);
+  });
+
   it("extracts only newly added pane output after the prompt echo", () => {
     const before = [
       "old status",

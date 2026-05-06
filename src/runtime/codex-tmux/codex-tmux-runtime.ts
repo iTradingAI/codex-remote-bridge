@@ -159,7 +159,11 @@ export class CodexTmuxRuntime implements CodexRuntime {
           await this.saveOutputCursor(session, latest, options.messageId);
         }
       }
-      if (output && Date.now() - stableSince >= (options.stableMs ?? 8000)) {
+      if (
+        output &&
+        !isCodexStillWorking(rawOutput) &&
+        Date.now() - stableSince >= (options.stableMs ?? 8000)
+      ) {
         await this.saveOutputCursor(session, latest, options.messageId);
         return output;
       }
@@ -472,9 +476,18 @@ function looksComplete(output: string): boolean {
 function needsUserInput(output: string): boolean {
   return [
     /Do you trust the contents of this directory\?/i,
+    /Would you like to run the following command/i,
     /Press enter to continue/i,
     /Reply with .*code:/i,
     /Confirmation code/i
+  ].some((pattern) => pattern.test(output));
+}
+
+function isCodexStillWorking(output: string): boolean {
+  return [
+    /Working\s*\([^)]*esc to interrupt/i,
+    /Running\s+[^]*esc to interrupt/i,
+    /esc to interrupt/i
   ].some((pattern) => pattern.test(output));
 }
 
