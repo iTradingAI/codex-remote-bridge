@@ -10,6 +10,62 @@ describe("PolicyGuard", () => {
     const decision = guard.canSend({ id: "user-1" }, binding, "please p\u200Bush now");
     expect(decision.requiresConfirmation).toBe(true);
   });
+
+  it("requires confirmation for explicit git operations", () => {
+    const guardedBinding = bindingWithConfirmation(["commit"]);
+    const guard = new PolicyGuard(guardedBinding.policy);
+    const decision = guard.canSend(
+      { id: "user-1" },
+      guardedBinding,
+      "please git commit these changes"
+    );
+    expect(decision.requiresConfirmation).toBe(true);
+  });
+
+  it("still requires confirmation when a high-risk git command follows status wording", () => {
+    const guardedBinding = bindingWithConfirmation(["push"]);
+    const guard = new PolicyGuard(guardedBinding.policy);
+    const decision = guard.canSend(
+      { id: "user-1" },
+      guardedBinding,
+      "check status, then git push"
+    );
+    expect(decision.requiresConfirmation).toBe(true);
+  });
+
+  it("requires confirmation for explicit Chinese operation requests", () => {
+    const guardedBinding = bindingWithConfirmation(["commit"]);
+    const guard = new PolicyGuard(guardedBinding.policy);
+    const decision = guard.canSend({ id: "user-1" }, guardedBinding, "请提交当前改动");
+    expect(decision.requiresConfirmation).toBe(true);
+  });
+
+  it("does not require confirmation for explanatory keyword mentions", () => {
+    const guardedBinding = bindingWithConfirmation(["commit"]);
+    const guard = new PolicyGuard(guardedBinding.policy);
+
+    expect(
+      guard.canSend({ id: "user-1" }, guardedBinding, "说明一下 commit 机制").requiresConfirmation
+    ).toBeUndefined();
+    expect(
+      guard.canSend({ id: "user-1" }, guardedBinding, "commit message 格式是什么").requiresConfirmation
+    ).toBeUndefined();
+    expect(
+      guard.canSend({ id: "user-1" }, guardedBinding, "show commit history").requiresConfirmation
+    ).toBeUndefined();
+  });
+
+  it("does not require repeated confirmation for follow-up context that only mentions a keyword", () => {
+    const guardedBinding = bindingWithConfirmation(["commit"]);
+    const guard = new PolicyGuard(guardedBinding.policy);
+    const decision = guard.canSend(
+      { id: "user-1" },
+      guardedBinding,
+      "我已经确认过，这次只是补充 commit 信息"
+    );
+    expect(decision).toMatchObject({ allowed: true });
+    expect(decision.requiresConfirmation).toBeUndefined();
+  });
 });
 
 describe("ProjectPathGuard", () => {
@@ -64,3 +120,13 @@ const binding: ProjectBinding = {
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString()
 };
+
+function bindingWithConfirmation(requireConfirmationFor: string[]): ProjectBinding {
+  return {
+    ...binding,
+    policy: {
+      ...binding.policy,
+      requireConfirmationFor
+    }
+  };
+}
