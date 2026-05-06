@@ -11,12 +11,12 @@ import type { ProjectBinding } from "../src/types.js";
 import { tempDir, testConfig } from "./helpers.js";
 
 class FakeRunner implements CommandRunner {
-  calls: Array<{ file: string; args: string[] }> = [];
+  calls: Array<{ file: string; args: string[]; input?: string }> = [];
   sessionExists = false;
   paneOutputs = ["recent output\n"];
 
-  async run(file: string, args: string[]): Promise<CommandResult> {
-    this.calls.push({ file, args });
+  async run(file: string, args: string[], options: { input?: string } = {}): Promise<CommandResult> {
+    this.calls.push({ file, args, input: options.input });
     const text = args.join(" ");
     if (text.includes("--version") || text.includes("-V")) {
       return { exitCode: 0, stdout: "ok", stderr: "" };
@@ -85,13 +85,49 @@ describe("CodexTmuxRuntime", () => {
       "hello"
     );
 
-    const setBuffer = runner.calls.find((call) => call.args.includes("set-buffer"));
+    const setBuffer = runner.calls.find((call) => call.args.includes("load-buffer"));
     const pasteBuffer = runner.calls.find((call) => call.args.includes("paste-buffer"));
     const deleteBuffer = runner.calls.find((call) => call.args.includes("delete-buffer"));
     const bufferName = argAfter(setBuffer?.args ?? [], "-b");
     expect(bufferName).toMatch(/^codex-channel-codex-test-/);
+    expect(setBuffer?.args).toEqual(expect.arrayContaining(["load-buffer", "-"]));
+    expect(setBuffer?.input).toBe("hello");
     expect(argAfter(pasteBuffer?.args ?? [], "-b")).toBe(bufferName);
     expect(argAfter(deleteBuffer?.args ?? [], "-b")).toBe(bufferName);
+  });
+
+  it("sends shell-sensitive multiline text through tmux buffer stdin", async () => {
+    const dir = await tempDir();
+    const runner = new FakeRunner();
+    const runtime = new CodexTmuxRuntime(
+      testConfig({ dataDir: dir }),
+      new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions),
+      runner
+    );
+    const text = [
+      "请检查这段 HTML：",
+      "```html",
+      '<section class="bg-white pb-8 pt-6 md:pb-10 md:pt-8">',
+      "$(echo should-not-run)",
+      "`uname`",
+      "</section>",
+      "```"
+    ].join("\n");
+
+    await runtime.send(
+      {
+        bindingId: "binding-1",
+        machineId: "test-machine",
+        projectPath: dir,
+        tmuxSession: "codex-test",
+        lastSeenAt: new Date().toISOString()
+      },
+      text
+    );
+
+    const loadBuffer = runner.calls.find((call) => call.args.includes("load-buffer"));
+    expect(loadBuffer?.input).toBe(text);
+    expect(loadBuffer?.args).not.toContain(text);
   });
 
   it("waits for pane output after sending text", async () => {

@@ -1,7 +1,4 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
+import { spawn } from "node:child_process";
 
 export interface CommandResult {
   exitCode: number;
@@ -10,29 +7,44 @@ export interface CommandResult {
 }
 
 export interface CommandRunner {
-  run(file: string, args: string[], options?: { cwd?: string }): Promise<CommandResult>;
+  run(file: string, args: string[], options?: { cwd?: string; input?: string }): Promise<CommandResult>;
 }
 
 export class ExecFileCommandRunner implements CommandRunner {
-  async run(file: string, args: string[], options: { cwd?: string } = {}): Promise<CommandResult> {
-    try {
-      const result = await execFileAsync(file, args, {
+  async run(
+    file: string,
+    args: string[],
+    options: { cwd?: string; input?: string } = {}
+  ): Promise<CommandResult> {
+    return new Promise((resolve) => {
+      const child = spawn(file, args, {
         cwd: options.cwd,
         windowsHide: true,
-        maxBuffer: 1024 * 1024
+        stdio: ["pipe", "pipe", "pipe"]
       });
-      return { exitCode: 0, stdout: result.stdout, stderr: result.stderr };
-    } catch (error) {
-      const execError = error as NodeJS.ErrnoException & {
-        code?: number | string;
-        stdout?: string;
-        stderr?: string;
-      };
-      return {
-        exitCode: typeof execError.code === "number" ? execError.code : 1,
-        stdout: execError.stdout ?? "",
-        stderr: execError.stderr ?? execError.message
-      };
-    }
+
+      let stdout = "";
+      let stderr = "";
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+      });
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk;
+      });
+      child.on("error", (error) => {
+        resolve({ exitCode: 1, stdout, stderr: stderr || error.message });
+      });
+      child.on("close", (code) => {
+        resolve({ exitCode: code ?? 1, stdout, stderr });
+      });
+
+      if (options.input != null) {
+        child.stdin.end(options.input, "utf8");
+      } else {
+        child.stdin.end();
+      }
+    });
   }
 }

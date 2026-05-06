@@ -92,9 +92,9 @@ export class CodexTmuxRuntime implements CodexRuntime {
     const bufferName = `codex-channel-${session.tmuxSession}-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2)}`;
-    const setBuffer = await this.runBuilt(this.builder.setBuffer(bufferName, text));
-    if (setBuffer.exitCode !== 0) {
-      throw new Error(`Failed to set tmux buffer: ${setBuffer.stderr || setBuffer.stdout}`);
+    const loadBuffer = await this.runBuilt(this.builder.loadBuffer(bufferName), text);
+    if (loadBuffer.exitCode !== 0) {
+      throw new Error(`Failed to set tmux buffer: ${loadBuffer.stderr || loadBuffer.stdout}`);
     }
 
     try {
@@ -262,8 +262,8 @@ export class CodexTmuxRuntime implements CodexRuntime {
     };
   }
 
-  private runBuilt(command: { file: string; args: string[]; cwd?: string }) {
-    return this.runner.run(command.file, command.args, { cwd: command.cwd });
+  private runBuilt(command: { file: string; args: string[]; cwd?: string }, input?: string) {
+    return this.runner.run(command.file, command.args, { cwd: command.cwd, input });
   }
 }
 

@@ -67,11 +67,11 @@ describe("TmuxCommandBuilder", () => {
     );
   });
 
-  it("uses caller-provided buffer names for sends", () => {
+  it("loads tmux buffers from stdin for sends", () => {
     const builder = new TmuxCommandBuilder(testConfig(), "posix");
-    expect(builder.setBuffer("buffer-a", "hello")).toEqual({
+    expect(builder.loadBuffer("buffer-a")).toEqual({
       file: "tmux",
-      args: ["set-buffer", "-b", "buffer-a", "hello"]
+      args: ["load-buffer", "-b", "buffer-a", "-"]
     });
     expect(builder.pasteBuffer("session-a", "buffer-a")).toEqual({
       file: "tmux",

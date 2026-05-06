@@ -57,8 +57,8 @@ export class TmuxCommandBuilder {
     ]);
   }
 
-  setBuffer(bufferName: string, text: string): BuiltCommand {
-    return this.wrap(this.config.runtime.tmuxCommand, ["set-buffer", "-b", bufferName, text]);
+  loadBuffer(bufferName: string): BuiltCommand {
+    return this.wrap(this.config.runtime.tmuxCommand, ["load-buffer", "-b", bufferName, "-"]);
   }
 
   pasteBuffer(sessionName: string, bufferName: string): BuiltCommand {
