@@ -135,7 +135,7 @@ export class CodexTmuxRuntime implements CodexRuntime {
       await sleep(pollMs);
       latest = await this.readRecent(session, options.lines ?? 80).catch(() => latest);
       const rawOutput = rawOutputAfterSend(before, latest, text);
-      const output = cleanCodexOutputForDiscord(rawOutput);
+      const output = discordOutputFromRaw(rawOutput);
       if (output) {
         if (output !== bestOutput || stableSince === 0) {
           stableSince = Date.now();
@@ -274,7 +274,7 @@ export interface SendAndWaitOptions {
 }
 
 export function outputAfterSend(before: string, latest: string, text: string): string {
-  return cleanCodexOutputForDiscord(rawOutputAfterSend(before, latest, text));
+  return discordOutputFromRaw(rawOutputAfterSend(before, latest, text));
 }
 
 function rawOutputAfterSend(before: string, latest: string, text: string): string {
@@ -314,8 +314,13 @@ function stripPromptEcho(output: string, text: string): string {
 }
 
 export function cleanCodexOutputForDiscord(output: string): string {
-  const cleaned = stripCodexTuiNoise(output);
-  return cleaned || output.trim();
+  return stripCodexTuiNoise(output);
+}
+
+function discordOutputFromRaw(output: string): string {
+  const cleaned = cleanCodexOutputForDiscord(output);
+  if (cleaned) return cleaned;
+  return needsUserInput(output) ? output.trim() : "";
 }
 
 function stripCodexTuiNoise(output: string): string {
@@ -332,7 +337,12 @@ function stripCodexTuiNoise(output: string): string {
       continue;
     }
 
-    if (isCodexSeparatorLine(trimmed) || isCodexWorkedLine(trimmed) || isCodexStatusLine(trimmed)) {
+    if (
+      isCodexSeparatorLine(trimmed) ||
+      isCodexWorkedLine(trimmed) ||
+      isCodexStatusLine(trimmed) ||
+      isCodexStartupChromeLine(trimmed)
+    ) {
       skippingTraceBlock = false;
       trimTrailingBlank(kept);
       continue;
@@ -385,6 +395,18 @@ function isCodexWorkedLine(line: string): boolean {
 
 function isCodexStatusLine(line: string): boolean {
   return /^gpt-\S+\s+\S+\s+·\s+/u.test(line);
+}
+
+function isCodexStartupChromeLine(line: string): boolean {
+  return (
+    /^model:\s+/iu.test(line) ||
+    /^directory:\s+/iu.test(line) ||
+    /^approval:\s+/iu.test(line) ||
+    /^sandbox:\s+/iu.test(line) ||
+    /^account:\s+/iu.test(line) ||
+    /^_ OpenAI Codex/i.test(line) ||
+    /^[╭╰│]/u.test(line)
+  );
 }
 
 function isCodexTraceStart(line: string): boolean {

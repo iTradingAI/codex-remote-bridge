@@ -201,6 +201,56 @@ describe("CodexTmuxRuntime", () => {
     expect(output).not.toContain("gpt-5.5 medium");
   });
 
+  it("does not treat a fresh Codex startup banner as a completed reply", async () => {
+    const dir = await tempDir();
+    const runner = new FakeRunner();
+    const startupOnly = [
+      "> contact page changes",
+      "",
+      "╭────────────────────────────────────────────────╮",
+      "│ >_ OpenAI Codex (v0.128.0)                     │",
+      "│                                                │",
+      "│ model: gpt-5.5 medium                          │",
+      "│ directory: /mnt/e/KEHU/202603明辉               │",
+      "╰────────────────────────────────────────────────╯"
+    ].join("\n");
+    runner.paneOutputs = [
+      "before\n",
+      startupOnly,
+      startupOnly,
+      [
+        startupOnly,
+        "",
+        "已按反馈完成 contact 页面调整，改动还未提交。",
+        "",
+        "验证：",
+        "- 已运行 git diff --check，无空白/格式错误",
+        "─ Worked for 2m 01s ─"
+      ].join("\n")
+    ];
+    const runtime = new CodexTmuxRuntime(
+      testConfig({ dataDir: dir }),
+      new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions),
+      runner
+    );
+
+    const output = await runtime.sendAndWaitForOutput(
+      {
+        bindingId: "binding-1",
+        machineId: "test-machine",
+        projectPath: dir,
+        tmuxSession: "codex-test",
+        lastSeenAt: new Date().toISOString()
+      },
+      "contact page changes",
+      { timeoutMs: 3000, pollMs: 1, stableMs: 1 }
+    );
+
+    expect(output).toContain("已按反馈完成 contact 页面调整");
+    expect(output).not.toContain("OpenAI Codex");
+    expect(output).not.toContain("model: gpt-5.5");
+  });
+
   it("extracts only newly added pane output after the prompt echo", () => {
     const before = [
       "old status",
