@@ -13,7 +13,7 @@ import { tempDir, testConfig } from "./helpers.js";
 class FakeRunner implements CommandRunner {
   calls: Array<{ file: string; args: string[]; input?: string }> = [];
   sessionExists = false;
-  paneOutputs = ["recent output\n"];
+  paneOutputs = ["OpenAI Codex\n\n› \n"];
 
   async run(file: string, args: string[], options: { input?: string } = {}): Promise<CommandResult> {
     this.calls.push({ file, args, input: options.input });
@@ -48,6 +48,29 @@ describe("CodexTmuxRuntime", () => {
     const session = await runtime.ensureSession(binding(dir));
     expect(session.tmuxSession).toBe("codex-test");
     expect(runner.calls.some((call) => call.args.includes("new-session"))).toBe(true);
+    expect(runner.calls.some((call) => call.args.includes("capture-pane"))).toBe(true);
+  });
+
+  it("waits for a fresh Codex session to become ready before returning it", async () => {
+    const dir = await tempDir();
+    const runner = new FakeRunner();
+    runner.paneOutputs = [
+      "OpenAI Codex\nstarting",
+      "OpenAI Codex\nWorking (1s esc to interrupt)",
+      "OpenAI Codex\n\n› \n"
+    ];
+    const runtime = new CodexTmuxRuntime(
+      testConfig({ dataDir: dir }),
+      new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions),
+      runner
+    );
+
+    await runtime.ensureSession(binding(dir));
+
+    const captureCalls = runner.calls.filter((call) => call.args.includes("capture-pane"));
+    const pasteCallIndex = runner.calls.findIndex((call) => call.args.includes("paste-buffer"));
+    expect(captureCalls).toHaveLength(3);
+    expect(pasteCallIndex).toBe(-1);
   });
 
   it("rediscovers an existing session during reconcile", async () => {
@@ -513,6 +536,7 @@ describe("CodexTmuxRuntime", () => {
     const dir = await tempDir();
     const runner = new FakeRunner();
     runner.paneOutputs = [
+      "OpenAI Codex\n\n› \n",
       "old output\n",
       "> hello\n",
       "> hello\nfresh answer\nWorked for 1s\n"

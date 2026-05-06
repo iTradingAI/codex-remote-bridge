@@ -70,7 +70,9 @@ export class CodexTmuxRuntime implements CodexRuntime {
       throw new Error(`Failed to start tmux session: ${created.stderr || created.stdout}`);
     }
 
-    return this.saveSession(this.sessionFromBinding(binding));
+    const session = this.sessionFromBinding(binding);
+    await this.waitForReadyPrompt(session);
+    return this.saveSession(session);
   }
 
   async discoverExisting(binding: ProjectBinding): Promise<RuntimeSession | null> {
@@ -290,6 +292,19 @@ export class CodexTmuxRuntime implements CodexRuntime {
 
   private runBuilt(command: { file: string; args: string[]; cwd?: string }, input?: string) {
     return this.runner.run(command.file, command.args, { cwd: command.cwd, input });
+  }
+
+  private async waitForReadyPrompt(session: RuntimeSession): Promise<void> {
+    const deadline = Date.now() + 30000;
+    let latest = "";
+    while (Date.now() < deadline) {
+      latest = await this.readRecent(session, 80).catch(() => latest);
+      if (isCodexReadyForInput(latest)) {
+        return;
+      }
+      await sleep(500);
+    }
+    throw new Error(`Codex session did not become ready for input: ${latest || "no pane output"}`);
   }
 }
 
@@ -530,6 +545,14 @@ function isCodexStillWorking(output: string): boolean {
     /Running\s+[^]*esc to interrupt/i,
     /esc to interrupt/i
   ].some((pattern) => pattern.test(output));
+}
+
+function isCodexReadyForInput(output: string): boolean {
+  if (!/OpenAI Codex/i.test(output)) return false;
+  if (isCodexStillWorking(output)) return false;
+  return output
+    .split(/\r?\n/)
+    .some((line) => /(?:^|\s)(?:›|>|鈥?|閳?)\s*$/.test(line.trim()));
 }
 
 async function reportStatus(
