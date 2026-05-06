@@ -297,8 +297,20 @@ export class CodexTmuxRuntime implements CodexRuntime {
   private async waitForReadyPrompt(session: RuntimeSession): Promise<void> {
     const deadline = Date.now() + 30000;
     let latest = "";
+    let trustAccepted = false;
     while (Date.now() < deadline) {
       latest = await this.readRecent(session, 80).catch(() => latest);
+      if (!trustAccepted && isProjectTrustPrompt(latest)) {
+        const accepted = await this.runBuilt(
+          this.builder.sendKeys(session.tmuxSession, ["1", "Enter"])
+        );
+        if (accepted.exitCode !== 0) {
+          throw new Error(`Failed to accept Codex project trust prompt: ${accepted.stderr || accepted.stdout}`);
+        }
+        trustAccepted = true;
+        await sleep(500);
+        continue;
+      }
       if (isCodexReadyForInput(latest)) {
         return;
       }
@@ -552,7 +564,11 @@ function isCodexReadyForInput(output: string): boolean {
   if (isCodexStillWorking(output)) return false;
   return output
     .split(/\r?\n/)
-    .some((line) => /(?:^|\s)(?:›|>|鈥?|閳?)\s*$/.test(line.trim()));
+    .some((line) => /(?:^|\s)(?:\u203a|>|鈥?|閳?)\s*$/.test(line.trim()));
+}
+
+function isProjectTrustPrompt(output: string): boolean {
+  return /Do you trust the contents of this directory\?/i.test(output);
 }
 
 async function reportStatus(

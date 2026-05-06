@@ -73,6 +73,41 @@ describe("CodexTmuxRuntime", () => {
     expect(pasteCallIndex).toBe(-1);
   });
 
+  it("accepts the Codex trust prompt for a newly bound project during startup", async () => {
+    const dir = await tempDir();
+    const runner = new FakeRunner();
+    runner.paneOutputs = [
+      [
+        "OpenAI Codex",
+        "Do you trust the contents of this directory?",
+        "Working with untrusted contents comes with higher risk of prompt injection.",
+        "1. Yes, continue",
+        "2. No, quit"
+      ].join("\n"),
+      "OpenAI Codex\n\n\u203a \n"
+    ];
+    const runtime = new CodexTmuxRuntime(
+      testConfig({ dataDir: dir }),
+      new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions),
+      runner
+    );
+
+    await runtime.ensureSession(binding(dir));
+
+    const trustPromptResponse = runner.calls.find(
+      (call) => call.args.includes("send-keys") && call.args.includes("1")
+    );
+    expect(trustPromptResponse?.args).toEqual([
+      "--",
+      "tmux",
+      "send-keys",
+      "-t",
+      "codex-test",
+      "1",
+      "Enter"
+    ]);
+  });
+
   it("rediscovers an existing session during reconcile", async () => {
     const dir = await tempDir();
     const runner = new FakeRunner();

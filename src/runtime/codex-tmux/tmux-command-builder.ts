@@ -79,6 +79,10 @@ export class TmuxCommandBuilder {
     return this.wrap(this.config.runtime.tmuxCommand, ["send-keys", "-t", sessionName, "Enter"]);
   }
 
+  sendKeys(sessionName: string, keys: string[]): BuiltCommand {
+    return this.wrap(this.config.runtime.tmuxCommand, ["send-keys", "-t", sessionName, ...keys]);
+  }
+
   killSession(sessionName: string): BuiltCommand {
     return this.wrap(this.config.runtime.tmuxCommand, ["kill-session", "-t", sessionName]);
   }
