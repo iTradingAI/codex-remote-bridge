@@ -462,6 +462,53 @@ describe("CodexTmuxRuntime", () => {
     expect(updates.join("\n")).not.toContain("old incomplete tail");
   });
 
+  it("emits safe status heartbeats before the current prompt echo is visible", async () => {
+    const dir = await tempDir();
+    const runner = new FakeRunner();
+    runner.paneOutputs = [
+      "old pane tail",
+      "old pane tail\nold delayed output",
+      "old pane tail\nold delayed output",
+      "old pane tail\nold delayed output\n> new question\nfresh answer\nWorked for 1s"
+    ];
+    const runtime = new CodexTmuxRuntime(
+      testConfig({ dataDir: dir }),
+      new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions),
+      runner
+    );
+    const statuses: string[] = [];
+    const updates: string[] = [];
+
+    const output = await runtime.sendAndWaitForOutput(
+      {
+        bindingId: "binding-1",
+        machineId: "test-machine",
+        projectPath: dir,
+        tmuxSession: "codex-test",
+        lastSeenAt: new Date().toISOString()
+      },
+      "new question",
+      {
+        timeoutMs: 3000,
+        pollMs: 1,
+        stableMs: 1,
+        statusIntervalMs: 0,
+        onStatus: (status) => {
+          statuses.push(status);
+        },
+        onUpdate: (update) => {
+          updates.push(update);
+        }
+      }
+    );
+
+    expect(output).toBe("fresh answer");
+    expect(statuses[0]).toContain("Message delivered to Codex");
+    expect(statuses.some((status) => status.includes("Still connected"))).toBe(true);
+    expect(statuses.join("\n")).not.toContain("old delayed output");
+    expect(updates.join("\n")).not.toContain("old delayed output");
+  });
+
   it("persists the last delivered pane cursor for the session", async () => {
     const dir = await tempDir();
     const runner = new FakeRunner();

@@ -372,7 +372,14 @@ export class CommandRouter {
           lines: 300,
           stableMs: 8000,
           updateIntervalMs: 5000,
+          statusIntervalMs: 15000,
           messageId: command.messageId,
+          onStatus: (status) =>
+            sink?.update({
+              kind: "status",
+              title: "Codex Running",
+              text: status
+            }),
           onUpdate: (output) =>
             sink?.update({
               kind: "summary",

@@ -134,13 +134,30 @@ export class CodexTmuxRuntime implements CodexRuntime {
     let bestOutput = "";
     let lastUpdate = "";
     let lastUpdateAt = 0;
+    let lastStatus = "";
+    let lastStatusAt = 0;
     let stableSince = 0;
+
+    const initialStatus = await reportStatus(
+      options,
+      "Message delivered to Codex. Waiting for this turn to start streaming.",
+      { lastStatus, lastStatusAt, force: true }
+    );
+    lastStatus = initialStatus.lastStatus;
+    lastStatusAt = initialStatus.lastStatusAt;
 
     while (Date.now() < deadline) {
       await sleep(pollMs);
       latest = await this.readRecent(session, options.lines ?? 80).catch(() => latest);
       const frame = outputFrameAfterSend(before, latest, text);
       if (!frame.anchored) {
+        const state = await reportStatus(
+          options,
+          "Still connected. Waiting for Codex to expose the current turn before streaming output.",
+          { lastStatus, lastStatusAt }
+        );
+        lastStatus = state.lastStatus;
+        lastStatusAt = state.lastStatusAt;
         continue;
       }
       const rawOutput = frame.raw;
@@ -282,8 +299,10 @@ export interface SendAndWaitOptions {
   lines?: number;
   stableMs?: number;
   updateIntervalMs?: number;
+  statusIntervalMs?: number;
   messageId?: string;
   onUpdate?: (output: string) => Promise<void> | void;
+  onStatus?: (status: string) => Promise<void> | void;
 }
 
 export function outputAfterSend(before: string, latest: string, text: string): string {
@@ -511,6 +530,26 @@ function isCodexStillWorking(output: string): boolean {
     /Running\s+[^]*esc to interrupt/i,
     /esc to interrupt/i
   ].some((pattern) => pattern.test(output));
+}
+
+async function reportStatus(
+  options: SendAndWaitOptions,
+  status: string,
+  state: { lastStatus: string; lastStatusAt: number; force?: boolean }
+): Promise<{ lastStatus: string; lastStatusAt: number }> {
+  if (!options.onStatus) {
+    return { lastStatus: state.lastStatus, lastStatusAt: state.lastStatusAt };
+  }
+  const now = Date.now();
+  if (
+    !state.force &&
+    status === state.lastStatus &&
+    now - state.lastStatusAt < (options.statusIntervalMs ?? 15000)
+  ) {
+    return { lastStatus: state.lastStatus, lastStatusAt: state.lastStatusAt };
+  }
+  await options.onStatus(status);
+  return { lastStatus: status, lastStatusAt: now };
 }
 
 function sleep(ms: number): Promise<void> {

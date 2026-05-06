@@ -24,7 +24,7 @@ export class JsonFileStore<T> {
     await mkdir(dirname(this.filePath), { recursive: true });
     const tempPath = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
     await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-    await rename(tempPath, this.filePath);
+    await renameWithRetry(tempPath, this.filePath);
   }
 
   async update(mutator: (value: T) => T | Promise<T>): Promise<T> {
@@ -36,4 +36,28 @@ export class JsonFileStore<T> {
     this.queue = operation.catch(() => undefined);
     return operation;
   }
+}
+
+async function renameWithRetry(from: string, to: string): Promise<void> {
+  const maxAttempts = 6;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      if (!isTransientRenameError(error) || attempt === maxAttempts) {
+        throw error;
+      }
+      await sleep(10 * attempt);
+    }
+  }
+}
+
+function isTransientRenameError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return code === "EPERM" || code === "EBUSY" || code === "EACCES";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
