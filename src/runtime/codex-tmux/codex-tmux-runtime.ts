@@ -119,7 +119,12 @@ export class CodexTmuxRuntime implements CodexRuntime {
   ): Promise<string> {
     const storedCursor = await this.readStoredCursor(session);
     const before =
-      storedCursor?.tail || (await this.readRecent(session, options.lines ?? 80).catch(() => ""));
+      (await this.readRecent(session, options.lines ?? 80).catch(() => "")) ||
+      storedCursor?.tail ||
+      "";
+    if (before) {
+      await this.saveOutputCursor(session, before, options.messageId);
+    }
     await this.send(session, text);
 
     const timeoutMs = options.timeoutMs ?? 120000;
@@ -134,7 +139,11 @@ export class CodexTmuxRuntime implements CodexRuntime {
     while (Date.now() < deadline) {
       await sleep(pollMs);
       latest = await this.readRecent(session, options.lines ?? 80).catch(() => latest);
-      const rawOutput = rawOutputAfterSend(before, latest, text);
+      const frame = outputFrameAfterSend(before, latest, text);
+      if (!frame.anchored) {
+        continue;
+      }
+      const rawOutput = frame.raw;
       const output = discordOutputFromRaw(rawOutput);
       if (output) {
         if (output !== bestOutput || stableSince === 0) {
@@ -172,7 +181,7 @@ export class CodexTmuxRuntime implements CodexRuntime {
     if (latest) {
       await this.saveOutputCursor(session, latest, options.messageId);
     }
-    return bestOutput || outputAfterSend(before, latest, text);
+    return bestOutput || anchoredOutputAfterSend(before, latest, text);
   }
 
   async readRecent(session: RuntimeSession, lines = 80): Promise<string> {
@@ -282,13 +291,26 @@ export function outputAfterSend(before: string, latest: string, text: string): s
 }
 
 function rawOutputAfterSend(before: string, latest: string, text: string): string {
-  if (!latest || latest === before) return "";
+  return outputFrameAfterSend(before, latest, text).raw;
+}
+
+function anchoredOutputAfterSend(before: string, latest: string, text: string): string {
+  const frame = outputFrameAfterSend(before, latest, text);
+  return frame.anchored ? discordOutputFromRaw(frame.raw) : "";
+}
+
+function outputFrameAfterSend(
+  before: string,
+  latest: string,
+  text: string
+): { raw: string; anchored: boolean } {
+  if (!latest || latest === before) return { raw: "", anchored: false };
   const anchored = outputAfterPromptEcho(latest, text);
-  if (anchored != null) return anchored;
+  if (anchored != null) return { raw: anchored, anchored: true };
   const added = latest.slice(sharedBoundaryLength(before, latest)).trim();
-  if (!added) return "";
+  if (!added) return { raw: "", anchored: false };
   const withoutEcho = stripPromptEcho(added, text).trim();
-  return withoutEcho || "";
+  return { raw: withoutEcho || "", anchored: false };
 }
 
 function outputAfterPromptEcho(output: string, text: string): string | undefined {

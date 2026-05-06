@@ -391,6 +391,77 @@ describe("CodexTmuxRuntime", () => {
     expect(outputAfterSend("unrelated old tail", latest, "current question")).toBe("current answer");
   });
 
+  it("does not stream stale output that appears before the current prompt echo", async () => {
+    const dir = await tempDir();
+    const runner = new FakeRunner();
+    runner.paneOutputs = [
+      [
+        "old answer",
+        "old incomplete tail"
+      ].join("\n"),
+      [
+        "old answer",
+        "old incomplete tail",
+        "old delayed final",
+        "Worked for 15s"
+      ].join("\n"),
+      [
+        "old answer",
+        "old incomplete tail",
+        "old delayed final",
+        "Worked for 15s",
+        "",
+        "> new question",
+        "",
+        "fresh answer",
+        "Worked for 1s"
+      ].join("\n")
+    ];
+    const store = new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions);
+    await store.update((document) => {
+      document.sessions.push({
+        bindingId: "binding-1",
+        machineId: "test-machine",
+        projectPath: dir,
+        tmuxSession: "codex-test",
+        lastSeenAt: new Date().toISOString(),
+        outputCursor: {
+          tail: "old answer",
+          updatedAt: new Date().toISOString(),
+          messageId: "old-message"
+        }
+      });
+      return document;
+    });
+    const runtime = new CodexTmuxRuntime(testConfig({ dataDir: dir }), store, runner);
+    const updates: string[] = [];
+
+    const output = await runtime.sendAndWaitForOutput(
+      {
+        bindingId: "binding-1",
+        machineId: "test-machine",
+        projectPath: dir,
+        tmuxSession: "codex-test",
+        lastSeenAt: new Date().toISOString()
+      },
+      "new question",
+      {
+        timeoutMs: 3000,
+        pollMs: 1,
+        stableMs: 1,
+        updateIntervalMs: 0,
+        messageId: "new-message",
+        onUpdate: (update) => {
+          updates.push(update);
+        }
+      }
+    );
+
+    expect(output).toBe("fresh answer");
+    expect(updates.join("\n")).not.toContain("old delayed final");
+    expect(updates.join("\n")).not.toContain("old incomplete tail");
+  });
+
   it("persists the last delivered pane cursor for the session", async () => {
     const dir = await tempDir();
     const runner = new FakeRunner();
