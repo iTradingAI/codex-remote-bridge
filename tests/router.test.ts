@@ -176,6 +176,13 @@ describe("CommandRouter", () => {
     });
 
     expect(response.kind).toBe("approval");
+    expect(response.actions).toEqual([
+      expect.objectContaining({
+        id: expect.stringMatching(/^confirm:/),
+        label: "Confirm",
+        style: "success"
+      })
+    ]);
     const pending = await readFile(join(dir, "pending.json"), "utf8");
     expect(pending).not.toContain(secretText);
     expect(pending).not.toContain("super-secret");
@@ -239,6 +246,10 @@ describe("CommandRouter", () => {
       args: { path: dir }
     });
     expect(pending.kind).toBe("approval");
+    expect(pending.actions?.[0]).toMatchObject({
+      id: expect.stringMatching(/^confirm:/),
+      label: "Confirm"
+    });
   });
 
   it("routes slash sends to the bound project session", async () => {

@@ -52,11 +52,18 @@ export interface OutboundField {
   value: string;
 }
 
+export interface OutboundAction {
+  id: string;
+  label: string;
+  style?: "primary" | "secondary" | "success" | "danger";
+}
+
 export interface OutboundMessage {
   kind: "status" | "question" | "error" | "summary" | "approval";
   title?: string;
   text: string;
   fields?: OutboundField[];
+  actions?: OutboundAction[];
 }
 
 export interface OutboundSink {

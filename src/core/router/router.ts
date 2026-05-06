@@ -104,7 +104,8 @@ export class CommandRouter {
     return {
       kind: "approval",
       title: "Confirm project binding",
-      text: `Reply with /codex confirm code:${approval.code} within 10 minutes to bind ${validation.resolvedPath}.`
+      text: `Reply with /codex confirm code:${approval.code} within 10 minutes to bind ${validation.resolvedPath}.`,
+      actions: [confirmAction(approval.code)]
     };
   }
 
@@ -340,7 +341,8 @@ export class CommandRouter {
       return {
         kind: "approval",
         title: "High-risk confirmation required",
-        text: `Reply with /codex confirm code:${approval.code} to send this message.`
+        text: `Reply with /codex confirm code:${approval.code} to send this message.`,
+        actions: [confirmAction(approval.code)]
       };
     }
     if (!decision.allowed) {
@@ -482,6 +484,14 @@ export class CommandRouter {
 
 function promptHash(text: string): string {
   return createHash("sha256").update(text).digest("hex");
+}
+
+function confirmAction(code: string) {
+  return {
+    id: `confirm:${code}`,
+    label: "Confirm",
+    style: "success" as const
+  };
 }
 
 function stringArg(command: InboundCommand, name: string): string {

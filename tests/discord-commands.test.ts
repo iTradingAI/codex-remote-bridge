@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildCodexSlashCommands,
   formatOutboundParts,
-  shouldIgnoreMessage
+  shouldIgnoreMessage,
+  toDiscordPayload
 } from "../src/providers/discord/discord-provider.js";
 
 interface CommandOptionWithChildren {
@@ -86,5 +87,25 @@ describe("Discord slash commands", () => {
     expect(parts.length).toBeGreaterThan(1);
     expect(parts.every((part) => part.length <= 1900)).toBe(true);
     expect(parts.join("\n")).toContain("line 119");
+  });
+
+  it("builds Discord button payloads for outbound actions", () => {
+    const payload = toDiscordPayload("Confirm this", [
+      { id: "confirm:ABC123", label: "Confirm", style: "success" }
+    ]);
+
+    expect(typeof payload).toBe("object");
+    if (typeof payload === "object") {
+      expect(payload.content).toBe("Confirm this");
+      expect(payload.components?.[0]?.toJSON()).toMatchObject({
+        components: [
+          {
+            custom_id: "codex:confirm:ABC123",
+            label: "Confirm",
+            style: 3
+          }
+        ]
+      });
+    }
   });
 });
