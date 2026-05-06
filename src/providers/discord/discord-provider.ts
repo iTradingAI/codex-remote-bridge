@@ -38,6 +38,8 @@ export const MESSAGE_STATUS_REACTIONS = {
   rejected: "🚫"
 } as const;
 
+type InteractionReplyMode = "interaction" | "channel";
+
 export class DiscordProviderAdapter {
   private readonly client: Client;
   private readonly ownership: DiscordIngressOwnership;
@@ -124,10 +126,12 @@ export class DiscordProviderAdapter {
   private async handleInteraction(interaction: Interaction): Promise<void> {
     if (!interaction.isChatInputCommand() || interaction.commandName !== "codex") return;
 
+    let replyMode: InteractionReplyMode = "interaction";
     try {
       if (!this.commandHandler) throw new Error("No command handler registered");
       console.info(`Discord interaction received: ${interaction.id}`);
-      if (await deferInteractionSafely(interaction)) {
+      replyMode = await deferInteractionSafely(interaction);
+      if (replyMode === "interaction") {
         console.info(`Discord interaction deferred: ${interaction.id}`);
       }
 
@@ -142,7 +146,7 @@ export class DiscordProviderAdapter {
           reason,
           action: command.command
         });
-        await this.replyToInteractionSafely(interaction, {
+        await this.sendInteractionResponse(interaction, replyMode, {
           kind: "error",
           title: "Conversation Not Owned",
           text: `This bridge is not configured for this Discord channel/thread. ${reason}`
@@ -150,16 +154,31 @@ export class DiscordProviderAdapter {
         return;
       }
 
-      const sink = interactionProgressSink(interaction);
+      const sink =
+        replyMode === "interaction"
+          ? interactionProgressSink(interaction)
+          : interactionChannelProgressSink(interaction);
       const outbound = await this.commandHandler(command, sink);
       await sink.finalize(outbound);
     } catch (error) {
-      await this.replyToInteractionSafely(interaction, {
+      await this.sendInteractionResponse(interaction, replyMode, {
         kind: "error",
         title: "Command Failed",
         text: (error as Error).message
       });
     }
+  }
+
+  private async sendInteractionResponse(
+    interaction: ChatInputCommandInteraction,
+    mode: InteractionReplyMode,
+    message: OutboundMessage
+  ): Promise<void> {
+    if (mode === "channel") {
+      await sendToInteractionChannelSafely(interaction, message);
+      return;
+    }
+    await this.replyToInteractionSafely(interaction, message);
   }
 
   private async replyToInteractionSafely(
@@ -314,14 +333,16 @@ export function shouldIgnoreMessage(message: Pick<Message, "author" | "system">)
   return message.author.bot || message.system;
 }
 
-async function deferInteractionSafely(interaction: ChatInputCommandInteraction): Promise<boolean> {
-  if (interaction.deferred || interaction.replied) return true;
+async function deferInteractionSafely(
+  interaction: ChatInputCommandInteraction
+): Promise<InteractionReplyMode> {
+  if (interaction.deferred || interaction.replied) return "interaction";
   try {
     await interaction.deferReply();
-    return true;
+    return "interaction";
   } catch (error) {
     console.error(`Failed to defer Discord interaction: ${(error as Error).message}`);
-    return false;
+    return "channel";
   }
 }
 
@@ -386,7 +407,27 @@ function interactionProgressSink(
       await interaction.reply(first).catch(() => undefined);
     },
     finalize: async (outbound) => {
-      await sendToInteractionPartsSafely(interaction, outbound);
+      await sendToInteractionPartsSafely(interaction, outbound).catch(async (error) => {
+        console.error(`Failed to finalize Discord interaction: ${(error as Error).message}`);
+        await sendToInteractionChannelSafely(interaction, outbound);
+      });
+    }
+  };
+}
+
+function interactionChannelProgressSink(
+  interaction: ChatInputCommandInteraction
+): OutboundSink & { finalize(message: OutboundMessage): Promise<void> } {
+  let primary: Message | undefined;
+  return {
+    update: async (outbound) => {
+      const first = formatOutboundParts(outbound)[0] ?? "";
+      primary = await sendOrEditInteractionChannelMessage(interaction, primary, first);
+    },
+    finalize: async (outbound) => {
+      const [first, ...rest] = formatOutboundParts(outbound);
+      primary = await sendOrEditInteractionChannelMessage(interaction, primary, first);
+      await sendInteractionChannelParts(interaction, rest);
     }
   };
 }
@@ -420,16 +461,42 @@ async function sendToInteractionChannelSafely(
   interaction: ChatInputCommandInteraction,
   outbound: OutboundMessage
 ): Promise<void> {
-  const channel = interaction.channel;
-  if (!channel || !("send" in channel) || typeof channel.send !== "function") return;
   try {
-    for (const payload of formatOutboundParts(outbound)) {
-      await channel.send(payload);
-    }
+    await sendInteractionChannelParts(interaction, formatOutboundParts(outbound));
     console.info(`Discord interaction fallback channel message sent: ${interaction.id}`);
   } catch (error) {
     console.error(`Failed to send fallback Discord interaction message: ${(error as Error).message}`);
   }
+}
+
+async function sendOrEditInteractionChannelMessage(
+  interaction: ChatInputCommandInteraction,
+  previous: Message | undefined,
+  payload: string
+): Promise<Message | undefined> {
+  if (previous) {
+    try {
+      await previous.edit(payload);
+      return previous;
+    } catch (error) {
+      console.error(`Failed to edit fallback Discord interaction message: ${(error as Error).message}`);
+    }
+  }
+  const [message] = await sendInteractionChannelParts(interaction, [payload]);
+  return message;
+}
+
+async function sendInteractionChannelParts(
+  interaction: ChatInputCommandInteraction,
+  payloads: string[]
+): Promise<Message[]> {
+  const channel = interaction.channel;
+  if (!channel || !("send" in channel) || typeof channel.send !== "function") return [];
+  const sent: Message[] = [];
+  for (const payload of payloads) {
+    sent.push(await channel.send(payload));
+  }
+  return sent;
 }
 
 export function discordTargetChannelId(target: ConversationRef): string {
