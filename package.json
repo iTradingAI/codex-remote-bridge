@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "discord.js": "^14.18.0",
+    "https-proxy-agent": "^7.0.6",
     "undici": "^6.24.1"
   },
   "devDependencies": {

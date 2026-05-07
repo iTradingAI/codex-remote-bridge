@@ -49,7 +49,7 @@ Bot 建议权限：
 
 ### 代理
 
-浏览器能打开 Discord 不代表 Node.js 进程也会走同一个代理。`cxb status`、`cxb register`、`cxb up` 都会连接 Discord API；如果机器访问 Discord API 超时，可以在 setup 里填写 HTTP 代理，或手动写入 `.env.local`：
+浏览器能打开 Discord 不代表 Node.js 进程也会走同一个代理。`cxb status`、`cxb register`、`cxb up` 都会连接 Discord REST API；`cxb up` 还会连接 Discord Gateway WebSocket。如果机器访问 Discord 超时，可以在 setup 里填写 HTTP 代理，或手动写入 `.env.local`：
 
 ```text
 CXB_PROXY=http://127.0.0.1:7890
@@ -65,7 +65,7 @@ ALL_PROXY / all_proxy
 HTTP_PROXY / http_proxy
 ```
 
-常见本地代理软件一般使用 `http://127.0.0.1:7890` 或 `http://127.0.0.1:7897`，请按实际端口填写。
+常见本地代理软件一般使用 `http://127.0.0.1:7890` 或 `http://127.0.0.1:7897`，请按实际端口填写。这里需要 HTTP/Mixed 代理端口，不是 SOCKS-only 端口。
 
 ### 本机
 

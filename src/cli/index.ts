@@ -2,8 +2,6 @@
 import { createBridge } from "../app.js";
 import { loadLocalEnvFiles } from "./env.js";
 import { configureProxyFromEnv } from "./proxy.js";
-import { runHealth, runRegisterCommands, runStart, runStop } from "./operations.js";
-import { runSetupWizard } from "./setup.js";
 import { formatCliError } from "./errors.js";
 import { readHookEventFromFile, readHookEventFromStdin } from "../hooks/hook-ingress.js";
 import { LocalHookEventQueue } from "../hooks/local-event-queue.js";
@@ -16,18 +14,19 @@ try {
   const args = process.argv.slice(2);
   const command = args[0] ?? "help";
   const configPath = readFlag(args, "--config") ?? "config/bridge.local.json";
+  const operations = await import("./operations.js");
 
   if (command === "health" || command === "status" || command === "doctor") {
-    await runHealth(configPath);
+    await operations.runHealth(configPath);
   } else if (command === "start" || command === "up") {
-    await runStart(configPath);
+    await operations.runStart(configPath);
   } else if (command === "stop" || command === "down") {
-    await runStop(configPath);
+    await operations.runStop(configPath);
   } else if (command === "restart") {
-    await runStop(configPath);
-    await runStart(configPath);
+    await operations.runStop(configPath);
+    await operations.runStart(configPath);
   } else if (command === "register-commands" || command === "register") {
-    await runRegisterCommands(configPath);
+    await operations.runRegisterCommands(configPath);
   } else if (command === "hook") {
     const bridge = await createBridge(configPath, { acquireLock: false });
     try {
@@ -39,6 +38,7 @@ try {
       await bridge.release();
     }
   } else if (command === "setup") {
+    const { runSetupWizard } = await import("./setup.js");
     await runSetupWizard({
       outputPath: readFlag(args, "--output") ?? "config/bridge.local.json",
       force: hasFlag(args, "--force"),

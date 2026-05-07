@@ -1,3 +1,5 @@
+import { createRequire } from "node:module";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import { ProxyAgent, setGlobalDispatcher } from "undici";
 
 export const PROXY_ENV_PRIORITY = [
@@ -30,6 +32,7 @@ export function configureProxyFromEnv(env: NodeJS.ProcessEnv = process.env): Pro
   const proxy = selectProxyEnv(env);
   if (!proxy) return undefined;
   setGlobalDispatcher(new ProxyAgent(proxy.url));
+  installWsProxy(proxy.url);
   return proxy;
 }
 
@@ -52,4 +55,30 @@ export function maskProxyUrl(value: string): string {
   if (url.username) url.username = "***";
   if (url.password) url.password = "***";
   return url.toString();
+}
+
+function installWsProxy(proxyUrl: string): void {
+  const require = createRequire(import.meta.url);
+  const ws = require("ws") as typeof import("ws") & { __cxbProxyUrl?: string };
+  if (ws.__cxbProxyUrl === proxyUrl) return;
+
+  const OriginalWebSocket = ws.WebSocket;
+  class ProxiedWebSocket extends OriginalWebSocket {
+    constructor(address: string | URL, protocols?: string | string[], options: import("ws").ClientOptions = {}) {
+      super(address, protocols ?? [], {
+        ...options,
+        agent: options.agent ?? new HttpsProxyAgent(proxyUrl)
+      });
+    }
+  }
+
+  Object.defineProperties(ProxiedWebSocket, {
+    CONNECTING: { value: OriginalWebSocket.CONNECTING },
+    OPEN: { value: OriginalWebSocket.OPEN },
+    CLOSING: { value: OriginalWebSocket.CLOSING },
+    CLOSED: { value: OriginalWebSocket.CLOSED }
+  });
+
+  ws.WebSocket = ProxiedWebSocket as typeof OriginalWebSocket;
+  ws.__cxbProxyUrl = proxyUrl;
 }
