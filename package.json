@@ -23,7 +23,8 @@
     "test:runtime": "vitest run tests/runtime.test.ts"
   },
   "dependencies": {
-    "discord.js": "^14.18.0"
+    "discord.js": "^14.18.0",
+    "undici": "^6.24.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

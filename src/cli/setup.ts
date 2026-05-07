@@ -16,6 +16,7 @@ export interface SetupAnswers {
   logDir: string;
   tokenEnv: string;
   botToken?: string;
+  proxyUrl?: string;
   applicationId: string;
   guildId: string;
   channelId: string;
@@ -111,6 +112,10 @@ export async function runSetupWizard(options: SetupOptions): Promise<void> {
         rl,
         `Discord bot token value for ${tokenEnv} (blank to use existing env/.env.local)`
       ));
+    const proxyUrl = await askOptional(
+      rl,
+      "HTTP proxy URL for Discord API (blank for none, example http://127.0.0.1:7890)"
+    );
     const applicationId = await askRequired(rl, "Discord application ID");
     const guildId = await askRequired(rl, "Discord guild/server ID");
     const channelId = await askRequired(rl, "Discord parent channel/Forum ID");
@@ -139,6 +144,7 @@ export async function runSetupWizard(options: SetupOptions): Promise<void> {
       logDir,
       tokenEnv,
       botToken,
+      proxyUrl,
       applicationId,
       guildId,
       channelId,
@@ -209,6 +215,10 @@ async function writeSetupConfig(options: SetupOptions, answers: SetupAnswers): P
     await upsertLocalEnvValue(answers.tokenEnv, answers.botToken);
     output.write(`Stored Discord bot token in .env.local as ${answers.tokenEnv}.\n`);
   }
+  if (answers.proxyUrl) {
+    await upsertLocalEnvValue("CXB_PROXY", answers.proxyUrl);
+    output.write("Stored Discord API proxy in .env.local as CXB_PROXY.\n");
+  }
 }
 
 async function runPostSetup(options: SetupOptions): Promise<void> {
@@ -255,6 +265,7 @@ export function parseSetupAnswers(content: string): SetupAnswers {
     botToken:
       optionalString(raw.botToken, "botToken") ??
       (looksLikeDiscordToken(tokenEnvInput) ? tokenEnvInput.trim() : undefined),
+    proxyUrl: optionalString(raw.proxyUrl, "proxyUrl"),
     applicationId: requiredString(raw.applicationId, "applicationId"),
     guildId: requiredString(raw.guildId, "guildId"),
     channelId: requiredString(raw.channelId, "channelId"),

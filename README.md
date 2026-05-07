@@ -47,6 +47,26 @@ Bot 建议权限：
 
 如果要支持普通文本消息直接进入 Codex，还需要开启 Message Content Intent。
 
+### 代理
+
+浏览器能打开 Discord 不代表 Node.js 进程也会走同一个代理。`cxb status`、`cxb register`、`cxb up` 都会连接 Discord API；如果机器访问 Discord API 超时，可以在 setup 里填写 HTTP 代理，或手动写入 `.env.local`：
+
+```text
+CXB_PROXY=http://127.0.0.1:7890
+```
+
+运行时代理读取顺序：
+
+```text
+CXB_PROXY
+DISCORD_PROXY
+HTTPS_PROXY / https_proxy
+ALL_PROXY / all_proxy
+HTTP_PROXY / http_proxy
+```
+
+常见本地代理软件一般使用 `http://127.0.0.1:7890` 或 `http://127.0.0.1:7897`，请按实际端口填写。
+
 ### 本机
 
 安装：
@@ -221,6 +241,8 @@ cxb up
 ```bash
 cxb register
 ```
+
+如果注册命令超时，先确认 `.env.local` 是否有 `CXB_PROXY`。浏览器正常但 `cxb register/status` 超时，通常就是 Node 进程没有走代理。
 
 ### Discord 没有持续反馈
 

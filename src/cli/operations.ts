@@ -4,6 +4,7 @@ import { loadBridgeConfig } from "../config.js";
 import { DiscordProviderAdapter } from "../providers/discord/discord-provider.js";
 import { isNetworkError } from "./errors.js";
 import { looksLikeDiscordToken } from "./env.js";
+import { maskProxyUrl, selectProxyEnv } from "./proxy.js";
 import { LocalHookEventQueue } from "../hooks/local-event-queue.js";
 import { routeHookEvent } from "../hooks/hook-ingress.js";
 import { storagePaths } from "../storage/paths.js";
@@ -46,6 +47,7 @@ export async function runHealth(configPath: string): Promise<void> {
     );
     const tokenEnvLooksInvalid = looksLikeDiscordToken(bridge.config.discord.tokenEnv);
     const token = tokenEnvLooksInvalid ? undefined : process.env[bridge.config.discord.tokenEnv];
+    const proxy = selectProxyEnv();
     const discordConnection = token
       ? await new DiscordProviderAdapter(bridge.config).probeConnection(token)
       : {
@@ -75,6 +77,15 @@ export async function runHealth(configPath: string): Promise<void> {
                 ? undefined
                 : "Expected exactly one parent scope per machine.",
             token_env_present: Boolean(token),
+            proxy: proxy
+              ? {
+                  env: proxy.name,
+                  url: maskProxyUrl(proxy.url)
+                }
+              : {
+                  env: null,
+                  url: null
+                },
             connection: discordConnection
           },
           sessions: sessionStates

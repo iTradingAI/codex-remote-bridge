@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createBridge } from "../app.js";
 import { loadLocalEnvFiles } from "./env.js";
+import { configureProxyFromEnv } from "./proxy.js";
 import { runHealth, runRegisterCommands, runStart, runStop } from "./operations.js";
 import { runSetupWizard } from "./setup.js";
 import { formatCliError } from "./errors.js";
@@ -10,6 +11,7 @@ import { storagePaths } from "../storage/paths.js";
 
 try {
   await loadLocalEnvFiles();
+  configureProxyFromEnv();
 
   const args = process.argv.slice(2);
   const command = args[0] ?? "help";

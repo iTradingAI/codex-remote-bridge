@@ -105,6 +105,23 @@ describe("setup config generation", () => {
     expect(config.discord.token_env).toBe("DISCORD_BOT_TOKEN");
   });
 
+  it("keeps proxy values out of generated bridge config", () => {
+    const config = buildSetupConfig({ ...answers, proxyUrl: "http://127.0.0.1:7890" });
+
+    expect(JSON.stringify(config)).not.toContain("127.0.0.1:7890");
+  });
+
+  it("parses optional proxy URL from setup answer files", () => {
+    expect(
+      parseSetupAnswers(
+        JSON.stringify({
+          ...answers,
+          proxyUrl: "http://127.0.0.1:7890"
+        })
+      ).proxyUrl
+    ).toBe("http://127.0.0.1:7890");
+  });
+
   it("repairs mojibake in setup path allowlists before writing config", () => {
     const config = buildSetupConfig({
       ...answers,

@@ -8,6 +8,7 @@ import {
   parseEnvFile,
   upsertLocalEnvValue
 } from "../src/cli/env.js";
+import { maskProxyUrl, normalizeProxyUrl, selectProxyEnv } from "../src/cli/proxy.js";
 import { tempDir } from "./helpers.js";
 
 describe("local env handling", () => {
@@ -42,6 +43,26 @@ describe("local env handling", () => {
     expect(isEnvVarName("not-a name")).toBe(false);
     expect(looksLikeDiscordToken("x".repeat(24) + "." + "y".repeat(6) + "." + "z".repeat(28))).toBe(
       true
+    );
+  });
+
+  it("selects CXB proxy before generic proxy environment variables", () => {
+    expect(
+      selectProxyEnv({
+        HTTPS_PROXY: "http://127.0.0.1:7890",
+        CXB_PROXY: "127.0.0.1:7891"
+      })?.url
+    ).toBe("http://127.0.0.1:7891/");
+  });
+
+  it("normalizes and validates proxy URLs", () => {
+    expect(normalizeProxyUrl("127.0.0.1:7890")).toBe("http://127.0.0.1:7890/");
+    expect(() => normalizeProxyUrl("socks5://127.0.0.1:7890")).toThrow(/Unsupported proxy/);
+  });
+
+  it("masks proxy credentials for diagnostic output", () => {
+    expect(maskProxyUrl("http://user:pass@127.0.0.1:7890")).toBe(
+      "http://***:***@127.0.0.1:7890/"
     );
   });
 });
