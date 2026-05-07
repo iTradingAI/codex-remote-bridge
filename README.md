@@ -175,8 +175,8 @@ crb daemon-status # 查看后台 tmux Bridge 会话
 crb daemon-stop   # 只停止后台 tmux Bridge 会话
 crb update     # 拉取、安装、构建、link、注册命令并重启
 crb logs       # 查看 Bridge 运行日志
-crb status     # 检查配置、Discord、tmux、Codex、绑定状态
-crb doctor     # status 的诊断别名
+crb status     # 输出 JSON 状态，适合脚本读取
+crb doctor     # 中文诊断并给出下一步修复建议
 crb register   # 重新注册 Discord slash commands
 crb hook       # 写入本机 hook 事件队列
 ```
@@ -252,6 +252,20 @@ crb register
 ```
 
 如果注册命令超时，先确认 `.env.local` 是否有 `CRB_PROXY`。浏览器正常但 `crb register/status` 超时，通常就是 Node 进程没有走代理。
+
+### 不确定 Bridge 哪里坏了
+
+优先运行：
+
+```bash
+crb doctor
+```
+
+它会用中文检查配置、token、代理、Discord 连接、tmux/Codex、后台驻留和项目绑定，并给出下一步命令。需要结构化输出时使用：
+
+```bash
+crb doctor --json
+```
 
 ### Discord 没有持续反馈
 

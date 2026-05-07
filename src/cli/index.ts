@@ -16,8 +16,11 @@ try {
   const configPath = readFlag(args, "--config") ?? "config/bridge.local.json";
   const operations = await import("./operations.js");
 
-  if (command === "health" || command === "status" || command === "doctor") {
+  if (command === "health" || command === "status" || (command === "doctor" && hasFlag(args, "--json"))) {
     await operations.runHealth(configPath);
+  } else if (command === "doctor") {
+    const { runDoctor } = await import("./doctor.js");
+    await runDoctor(configPath);
   } else if (command === "logs") {
     const { runLogs } = await import("./logs.js");
     await runLogs(configPath, {
@@ -97,8 +100,8 @@ try {
     重启后台 tmux Bridge。加 --foreground 可改为前台启动。
   crb status [--config config/bridge.local.json]
     检查配置、Discord 连接、tmux/Codex 可用性和已绑定项目。
-  crb doctor [--config config/bridge.local.json]
-    status 的诊断别名，用于环境诊断。
+  crb doctor [--config config/bridge.local.json] [--json]
+    中文环境诊断，直接提示下一步修复动作；加 --json 输出兼容 status 的结构化结果。
   crb register [--config config/bridge.local.json]
     注册或刷新 Discord slash commands。
   crb hook [--config config/bridge.local.json] [--event-file event.json]
