@@ -77,6 +77,10 @@ describe("TmuxCommandBuilder", () => {
       file: "tmux",
       args: ["paste-buffer", "-b", "buffer-a", "-t", "session-a"]
     });
+    expect(builder.dismissPromptOverlay("session-a")).toEqual({
+      file: "tmux",
+      args: ["send-keys", "-t", "session-a", "Escape"]
+    });
     expect(builder.sendKeys("session-a", ["1", "Enter"])).toEqual({
       file: "tmux",
       args: ["send-keys", "-t", "session-a", "1", "Enter"]

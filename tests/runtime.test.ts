@@ -145,13 +145,49 @@ describe("CodexTmuxRuntime", () => {
 
     const setBuffer = runner.calls.find((call) => call.args.includes("load-buffer"));
     const pasteBuffer = runner.calls.find((call) => call.args.includes("paste-buffer"));
+    const dismissOverlay = runner.calls.find(
+      (call) => call.args.includes("send-keys") && call.args.includes("Escape")
+    );
     const deleteBuffer = runner.calls.find((call) => call.args.includes("delete-buffer"));
     const bufferName = argAfter(setBuffer?.args ?? [], "-b");
     expect(bufferName).toMatch(/^codex-channel-codex-test-/);
     expect(setBuffer?.args).toEqual(expect.arrayContaining(["load-buffer", "-"]));
     expect(setBuffer?.input).toBe("hello");
     expect(argAfter(pasteBuffer?.args ?? [], "-b")).toBe(bufferName);
+    expect(dismissOverlay?.args).toEqual(["--", "tmux", "send-keys", "-t", "codex-test", "Escape"]);
     expect(argAfter(deleteBuffer?.args ?? [], "-b")).toBe(bufferName);
+  });
+
+  it("dismisses Codex prompt suggestions before submitting pasted text", async () => {
+    const dir = await tempDir();
+    const runner = new FakeRunner();
+    const runtime = new CodexTmuxRuntime(
+      testConfig({ dataDir: dir }),
+      new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions),
+      runner
+    );
+
+    await runtime.send(
+      {
+        bindingId: "binding-1",
+        machineId: "test-machine",
+        projectPath: dir,
+        tmuxSession: "codex-test",
+        lastSeenAt: new Date().toISOString()
+      },
+      "$plan，先把开发计划方案做好"
+    );
+
+    const pasteCallIndex = runner.calls.findIndex((call) => call.args.includes("paste-buffer"));
+    const escapeCallIndex = runner.calls.findIndex(
+      (call) => call.args.includes("send-keys") && call.args.includes("Escape")
+    );
+    const enterCallIndex = runner.calls.findIndex(
+      (call) => call.args.includes("send-keys") && call.args.includes("Enter")
+    );
+    expect(pasteCallIndex).toBeGreaterThanOrEqual(0);
+    expect(escapeCallIndex).toBeGreaterThan(pasteCallIndex);
+    expect(enterCallIndex).toBeGreaterThan(escapeCallIndex);
   });
 
   it("sends shell-sensitive multiline text through tmux buffer stdin", async () => {

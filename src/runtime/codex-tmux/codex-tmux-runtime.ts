@@ -105,6 +105,15 @@ export class CodexTmuxRuntime implements CodexRuntime {
         throw new Error(`Failed to paste tmux buffer: ${paste.stderr || paste.stdout}`);
       }
 
+      const dismissOverlay = await this.runBuilt(
+        this.builder.dismissPromptOverlay(session.tmuxSession)
+      );
+      if (dismissOverlay.exitCode !== 0) {
+        throw new Error(
+          `Failed to dismiss Codex prompt overlay: ${dismissOverlay.stderr || dismissOverlay.stdout}`
+        );
+      }
+
       const enter = await this.runBuilt(this.builder.sendEnter(session.tmuxSession));
       if (enter.exitCode !== 0) {
         throw new Error(`Failed to send Enter to tmux: ${enter.stderr || enter.stdout}`);
