@@ -150,7 +150,7 @@ describe("CodexTmuxRuntime", () => {
     );
     const deleteBuffer = runner.calls.find((call) => call.args.includes("delete-buffer"));
     const bufferName = argAfter(setBuffer?.args ?? [], "-b");
-    expect(bufferName).toMatch(/^codex-channel-codex-test-/);
+    expect(bufferName).toMatch(/^cxb-codex-test-/);
     expect(setBuffer?.args).toEqual(expect.arrayContaining(["load-buffer", "-"]));
     expect(setBuffer?.input).toBe("hello");
     expect(argAfter(pasteBuffer?.args ?? [], "-b")).toBe(bufferName);
@@ -411,7 +411,7 @@ describe("CodexTmuxRuntime", () => {
         "已上传到服务器。",
         "",
         "上传目标：",
-        "47.103.138.113:/www/wwwroot/minghui.w2.csite.cc/wp-content/themes/wpcn/",
+        "203.0.113.10:/www/wwwroot/example.test/wp-content/themes/wpcn/",
         "",
         "─ Worked for 2m 11s ─"
       ].join("\n")
@@ -435,7 +435,7 @@ describe("CodexTmuxRuntime", () => {
     );
 
     expect(output).toContain("已上传到服务器");
-    expect(output).toContain("47.103.138.113");
+    expect(output).toContain("203.0.113.10");
     expect(output).not.toBe(intermediate);
   });
 

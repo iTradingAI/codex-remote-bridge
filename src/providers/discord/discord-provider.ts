@@ -98,7 +98,7 @@ export class DiscordProviderAdapter {
     await this.client.login(token);
     this.client.user?.setPresence({
       status: "online",
-      activities: [{ name: "Codex Channel" }]
+      activities: [{ name: "Codex Remote Bridge" }]
     });
     return {
       userId: this.client.user?.id,

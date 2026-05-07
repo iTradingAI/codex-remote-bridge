@@ -1,11 +1,14 @@
 import { createBridge } from "../app.js";
 import type { BridgeConfig } from "../types.js";
+import { loadBridgeConfig } from "../config.js";
 import { DiscordProviderAdapter } from "../providers/discord/discord-provider.js";
 import { isNetworkError } from "./errors.js";
 import { looksLikeDiscordToken } from "./env.js";
 import { LocalHookEventQueue } from "../hooks/local-event-queue.js";
 import { routeHookEvent } from "../hooks/hook-ingress.js";
 import { storagePaths } from "../storage/paths.js";
+import { readFile, unlink } from "node:fs/promises";
+import { join } from "node:path";
 
 export function getDiscordToken(config: BridgeConfig): string {
   if (looksLikeDiscordToken(config.discord.tokenEnv)) {
@@ -179,6 +182,32 @@ export async function runStart(configPath: string): Promise<void> {
   await waitForever();
 }
 
+export async function runStop(configPath: string): Promise<void> {
+  const config = await loadBridgeConfig(configPath);
+  const lockPath = join(config.dataDir, ".bridge.lock");
+  const pid = await readLockPid(lockPath);
+  if (!pid) {
+    await unlink(lockPath).catch(() => undefined);
+    console.log("Bridge is not running.");
+    return;
+  }
+
+  if (!isProcessAlive(pid)) {
+    await unlink(lockPath).catch(() => undefined);
+    console.log(`Removed stale bridge lock for PID ${pid}.`);
+    return;
+  }
+
+  process.kill(pid, "SIGTERM");
+  const stopped = await waitForProcessExit(pid, 5000);
+  if (!stopped && isProcessAlive(pid)) {
+    process.kill(pid, "SIGKILL");
+    await waitForProcessExit(pid, 5000);
+  }
+  await unlink(lockPath).catch(() => undefined);
+  console.log(`Stopped bridge process ${pid}.`);
+}
+
 export function isBridgeLockError(error: unknown): boolean {
   return (error as Error).message?.includes("Bridge data directory is already locked") ?? false;
 }
@@ -206,4 +235,28 @@ function sleep(ms: number): Promise<void> {
 
 function waitForever(): Promise<never> {
   return new Promise(() => undefined);
+}
+
+async function readLockPid(lockPath: string): Promise<number | undefined> {
+  const raw = (await readFile(lockPath, "utf8").catch(() => "")).trim();
+  const pid = Number(raw);
+  return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(pid)) return true;
+    await sleep(200);
+  }
+  return !isProcessAlive(pid);
 }

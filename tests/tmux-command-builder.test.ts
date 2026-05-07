@@ -10,7 +10,7 @@ describe("TmuxCommandBuilder", () => {
   const binding = {
     id: "binding-1",
     runtime: { kind: "codex-tmux" as const, tmuxSession: "codex-binding-1" },
-    projectPath: "E:\\Projects\\codex-channel"
+    projectPath: "E:\\Projects\\codex-remote-bridge"
   } as ProjectBinding;
 
   it("builds POSIX tmux commands", () => {
@@ -23,14 +23,14 @@ describe("TmuxCommandBuilder", () => {
         "-s",
         "codex-binding-1",
         "-c",
-        "E:\\Projects\\codex-channel",
+        "E:\\Projects\\codex-remote-bridge",
         "codex",
         "--sandbox",
         "danger-full-access",
         "--ask-for-approval",
         "never",
         "-c",
-        'projects."E:\\\\Projects\\\\codex-channel".trust_level="trusted"',
+        'projects."E:\\\\Projects\\\\codex-remote-bridge".trust_level="trusted"',
         "--no-alt-screen"
       ]
     });
@@ -48,14 +48,14 @@ describe("TmuxCommandBuilder", () => {
         "-s",
         "codex-binding-1",
         "-c",
-        "/mnt/e/Projects/codex-channel",
+        "/mnt/e/Projects/codex-remote-bridge",
         "codex",
         "--sandbox",
         "danger-full-access",
         "--ask-for-approval",
         "never",
         "-c",
-        'projects."/mnt/e/Projects/codex-channel".trust_level="trusted"',
+        'projects."/mnt/e/Projects/codex-remote-bridge".trust_level="trusted"',
         "--no-alt-screen"
       ]
     });

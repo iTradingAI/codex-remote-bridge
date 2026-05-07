@@ -92,7 +92,7 @@ export async function runSetupWizard(options: SetupOptions): Promise<void> {
     }
 
     const defaults = defaultSetupAnswers();
-    output.write("Codex Channel setup\n");
+    output.write("Codex Remote Bridge setup\n");
     output.write("Leave a prompt blank to use the value in brackets.\n\n");
 
     const machineId = await askString(rl, "Machine ID", defaults.machineId);
@@ -223,7 +223,7 @@ async function runPostSetup(options: SetupOptions): Promise<void> {
   await runRegisterCommands(options.outputPath);
 
   if (options.startAfterSetup === false) {
-    output.write(`Bridge is configured. Start later with: node dist/src/cli/index.js start --config ${options.outputPath}\n`);
+    output.write(`Bridge is configured. Start later with: cxb up --config ${options.outputPath}\n`);
     return;
   }
 

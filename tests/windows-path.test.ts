@@ -3,8 +3,8 @@ import { safeTmuxSessionName, windowsPathToWslPath } from "../src/runtime/platfo
 
 describe("windowsPathToWslPath", () => {
   it("converts drive-letter paths to WSL mount paths", () => {
-    expect(windowsPathToWslPath("E:\\Projects\\codex-channel")).toBe(
-      "/mnt/e/Projects/codex-channel"
+    expect(windowsPathToWslPath("E:\\Projects\\codex-remote-bridge")).toBe(
+      "/mnt/e/Projects/codex-remote-bridge"
     );
   });
 
@@ -15,6 +15,8 @@ describe("windowsPathToWslPath", () => {
 
 describe("safeTmuxSessionName", () => {
   it("normalizes session names for tmux", () => {
-    expect(safeTmuxSessionName("Codex: Channel / Thread 123")).toBe("codex-channel-thread-123");
+    expect(safeTmuxSessionName("Codex: Remote Bridge / Thread 123")).toBe(
+      "codex-remote-bridge-thread-123"
+    );
   });
 });

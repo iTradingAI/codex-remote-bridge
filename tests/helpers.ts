@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { BridgeConfig } from "../src/types.js";
 
-export async function tempDir(prefix = "codex-channel-"): Promise<string> {
+export async function tempDir(prefix = "codex-remote-bridge-"): Promise<string> {
   return mkdtemp(join(tmpdir(), prefix));
 }
 

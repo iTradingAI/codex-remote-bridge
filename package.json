@@ -1,16 +1,24 @@
 {
-  "name": "codex-channel",
+  "name": "codex-remote-bridge",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Discord-first bridge for Codex CLI sessions over tmux.",
   "bin": {
-    "codex-channel": "./dist/src/cli/index.js"
+    "cxb": "./dist/src/cli/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "npm run typecheck",
+    "setup": "node dist/src/cli/index.js setup",
+    "up": "node dist/src/cli/index.js up",
+    "down": "node dist/src/cli/index.js down",
+    "restart": "node dist/src/cli/index.js restart",
+    "status": "node dist/src/cli/index.js status",
+    "doctor": "node dist/src/cli/index.js doctor",
+    "register": "node dist/src/cli/index.js register",
+    "start": "node dist/src/cli/index.js up",
     "test": "vitest run",
     "test:runtime": "vitest run tests/runtime.test.ts"
   },

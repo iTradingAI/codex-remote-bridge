@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createBridge } from "../app.js";
 import { loadLocalEnvFiles } from "./env.js";
-import { runHealth, runRegisterCommands, runStart } from "./operations.js";
+import { runHealth, runRegisterCommands, runStart, runStop } from "./operations.js";
 import { runSetupWizard } from "./setup.js";
 import { formatCliError } from "./errors.js";
 import { readHookEventFromFile, readHookEventFromStdin } from "../hooks/hook-ingress.js";
@@ -13,13 +13,18 @@ try {
 
   const args = process.argv.slice(2);
   const command = args[0] ?? "help";
-  const configPath = readFlag(args, "--config") ?? "config/bridge.example.json";
+  const configPath = readFlag(args, "--config") ?? "config/bridge.local.json";
 
-  if (command === "health") {
+  if (command === "health" || command === "status" || command === "doctor") {
     await runHealth(configPath);
-  } else if (command === "start") {
+  } else if (command === "start" || command === "up") {
     await runStart(configPath);
-  } else if (command === "register-commands") {
+  } else if (command === "stop" || command === "down") {
+    await runStop(configPath);
+  } else if (command === "restart") {
+    await runStop(configPath);
+    await runStart(configPath);
+  } else if (command === "register-commands" || command === "register") {
     await runRegisterCommands(configPath);
   } else if (command === "hook") {
     const bridge = await createBridge(configPath, { acquireLock: false });
@@ -41,20 +46,32 @@ try {
     });
   } else {
     console.log(`用法:
-  codex-channel setup [--output config/bridge.local.json] [--force] [--answers setup-answers.json] [--no-start] [--no-post-setup]
-    初始化配置。默认会健康检查、注册 Discord 命令，并启动 Bridge。
+  cxb setup [--output config/bridge.local.json] [--force] [--answers setup-answers.json] [--no-start] [--no-post-setup]
+    初始化本机配置。默认会健康检查、注册 Discord 命令，并启动 Bridge。
 
-  codex-channel health --config config/bridge.local.json
-    检查本机 Bridge 配置、Discord 连接、tmux/Codex 可用性和已绑定项目。
+  cxb up [--config config/bridge.local.json]
+    启动本机 Bridge 驻留进程。每台真实电脑只需要一个。
 
-  codex-channel register-commands --config config/bridge.local.json
-    注册或刷新 Discord slash commands。Bridge 已运行时也可以执行。
+  cxb down [--config config/bridge.local.json]
+    停止本机 Bridge，并清理 data/.bridge.lock。
 
-  codex-channel hook --config config/bridge.local.json [--event-file event.json]
+  cxb restart [--config config/bridge.local.json]
+    重启本机 Bridge。
+
+  cxb status [--config config/bridge.local.json]
+    检查配置、Discord 连接、tmux/Codex 可用性和已绑定项目。
+
+  cxb doctor [--config config/bridge.local.json]
+    status 的别名，用于环境诊断。
+
+  cxb register [--config config/bridge.local.json]
+    注册或刷新 Discord slash commands。
+
+  cxb hook [--config config/bridge.local.json] [--event-file event.json]
     写入本机 hook 事件队列，由正在运行的 Bridge 转发到 Discord。
 
-  codex-channel start --config config/bridge.local.json
-    启动本机 Bridge 驻留进程。每台真实电脑只需要一个。`);
+兼容别名:
+  start=up, stop=down, health=status, register-commands=register`);
   }
 } catch (error) {
   console.error(formatCliError(error));

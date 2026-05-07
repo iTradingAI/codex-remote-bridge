@@ -163,7 +163,7 @@ describe("CommandRouter", () => {
     });
 
     const router = newTestRouter(dir, config, registry);
-    const secretText = "please git push with TOKEN=super-secret";
+    const secretText = "please git push with TOKEN=fake-sensitive-value";
     const response = await router.handle({
       conversation: {
         provider: "discord",
@@ -185,7 +185,7 @@ describe("CommandRouter", () => {
     ]);
     const pending = await readFile(join(dir, "pending.json"), "utf8");
     expect(pending).not.toContain(secretText);
-    expect(pending).not.toContain("super-secret");
+    expect(pending).not.toContain("fake-sensitive-value");
   });
 
   it("unbinds only for authorized users", async () => {

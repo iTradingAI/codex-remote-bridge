@@ -99,9 +99,9 @@ describe("setup config generation", () => {
   });
 
   it("keeps token values out of generated bridge config", () => {
-    const config = buildSetupConfig({ ...answers, botToken: "secret-token" });
+    const config = buildSetupConfig({ ...answers, botToken: "fake-sensitive-value" });
 
-    expect(JSON.stringify(config)).not.toContain("secret-token");
+    expect(JSON.stringify(config)).not.toContain("fake-sensitive-value");
     expect(config.discord.token_env).toBe("DISCORD_BOT_TOKEN");
   });
 

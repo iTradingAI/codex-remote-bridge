@@ -2,6 +2,7 @@ node_modules/
 dist/
 data/
 logs/
+docs/
 *.local.json
 .env
 .env.*
@@ -11,3 +12,4 @@ logs/
 .omx/drafts/
 .omx/metrics.json
 .omx/tmux-hook.json
+.omx/
