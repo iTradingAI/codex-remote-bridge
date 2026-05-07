@@ -46,11 +46,11 @@ describe("local env handling", () => {
     );
   });
 
-  it("selects CXB proxy before generic proxy environment variables", () => {
+  it("selects CRB proxy before generic proxy environment variables", () => {
     expect(
       selectProxyEnv({
         HTTPS_PROXY: "http://127.0.0.1:7890",
-        CXB_PROXY: "127.0.0.1:7891"
+        CRB_PROXY: "127.0.0.1:7891"
       })?.url
     ).toBe("http://127.0.0.1:7891/");
   });

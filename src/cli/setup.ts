@@ -216,8 +216,8 @@ async function writeSetupConfig(options: SetupOptions, answers: SetupAnswers): P
     output.write(`Stored Discord bot token in .env.local as ${answers.tokenEnv}.\n`);
   }
   if (answers.proxyUrl) {
-    await upsertLocalEnvValue("CXB_PROXY", answers.proxyUrl);
-    output.write("Stored Discord API proxy in .env.local as CXB_PROXY.\n");
+    await upsertLocalEnvValue("CRB_PROXY", answers.proxyUrl);
+    output.write("Stored Discord API proxy in .env.local as CRB_PROXY.\n");
   }
 }
 
@@ -233,7 +233,7 @@ async function runPostSetup(options: SetupOptions): Promise<void> {
   await runRegisterCommands(options.outputPath);
 
   if (options.startAfterSetup === false) {
-    output.write(`Bridge is configured. Start later with: cxb up --config ${options.outputPath}\n`);
+    output.write(`Bridge is configured. Start later with: crb up --config ${options.outputPath}\n`);
     return;
   }
 

@@ -5,7 +5,7 @@
 ## 工作模型
 
 - 一个 Discord Bot 可以服务多台真实电脑。
-- 每台真实电脑运行一个 `cxb` Bridge 进程。
+- 每台真实电脑运行一个 `crb` Bridge 进程。
 - 每台电脑配置一个独立的 Discord parent channel 或 Forum 作为机器入口。
 - parent channel/Forum 下的子 thread 绑定本机项目目录。
 - 每个项目不需要单独启动 Bridge 进程，Bridge 会按 thread 路由到对应 tmux/Codex 会话。
@@ -49,16 +49,16 @@ Bot 建议权限：
 
 ### 代理
 
-浏览器能打开 Discord 不代表 Node.js 进程也会走同一个代理。`cxb status`、`cxb register`、`cxb up` 都会连接 Discord REST API；`cxb up` 还会连接 Discord Gateway WebSocket。如果机器访问 Discord 超时，可以在 setup 里填写 HTTP 代理，或手动写入 `.env.local`：
+浏览器能打开 Discord 不代表 Node.js 进程也会走同一个代理。`crb status`、`crb register`、`crb up` 都会连接 Discord REST API；`crb up` 还会连接 Discord Gateway WebSocket。如果机器访问 Discord 超时，可以在 setup 里填写 HTTP 代理，或手动写入 `.env.local`：
 
 ```text
-CXB_PROXY=http://127.0.0.1:7890
+CRB_PROXY=http://127.0.0.1:7890
 ```
 
 运行时代理读取顺序：
 
 ```text
-CXB_PROXY
+CRB_PROXY
 DISCORD_PROXY
 HTTPS_PROXY / https_proxy
 ALL_PROXY / all_proxy
@@ -97,7 +97,7 @@ npm link
 之后可以使用：
 
 ```bash
-cxb help
+crb help
 ```
 
 不使用 `npm link` 时，也可以用 npm scripts：
@@ -113,7 +113,7 @@ npm run status
 1. 初始化配置：
 
 ```bash
-cxb setup
+crb setup
 ```
 
 向导会写入：
@@ -124,7 +124,7 @@ cxb setup
 2. 如果 setup 没有自动启动，手动启动：
 
 ```bash
-cxb up
+crb up
 ```
 
 3. 在 Discord 的机器 parent channel/Forum 下创建或打开一个子 thread，绑定项目：
@@ -162,23 +162,23 @@ Windows 路径示例：
 ## 常用命令
 
 ```bash
-cxb setup      # 初始化配置
-cxb up         # 启动 Bridge
-cxb down       # 停止 Bridge，并清理锁
-cxb restart    # 重启 Bridge
-cxb status     # 检查配置、Discord、tmux、Codex、绑定状态
-cxb doctor     # status 的诊断别名
-cxb register   # 重新注册 Discord slash commands
-cxb hook       # 写入本机 hook 事件队列
+crb setup      # 初始化配置
+crb up         # 启动 Bridge
+crb down       # 停止 Bridge，并清理锁
+crb restart    # 重启 Bridge
+crb status     # 检查配置、Discord、tmux、Codex、绑定状态
+crb doctor     # status 的诊断别名
+crb register   # 重新注册 Discord slash commands
+crb hook       # 写入本机 hook 事件队列
 ```
 
-兼容旧命令：
+兼容子命令：
 
 ```bash
-cxb start
-cxb stop
-cxb health
-cxb register-commands
+crb start
+crb stop
+crb health
+crb register-commands
 ```
 
 ## 多机器配置
@@ -230,8 +230,8 @@ node_modules/
 说明已有 Bridge 进程在运行，或上次异常退出留下锁。优先使用：
 
 ```bash
-cxb down
-cxb up
+crb down
+crb up
 ```
 
 ### Bot 在线但 slash command 不可用
@@ -239,10 +239,10 @@ cxb up
 重新注册命令：
 
 ```bash
-cxb register
+crb register
 ```
 
-如果注册命令超时，先确认 `.env.local` 是否有 `CXB_PROXY`。浏览器正常但 `cxb register/status` 超时，通常就是 Node 进程没有走代理。
+如果注册命令超时，先确认 `.env.local` 是否有 `CRB_PROXY`。浏览器正常但 `crb register/status` 超时，通常就是 Node 进程没有走代理。
 
 ### Discord 没有持续反馈
 
@@ -250,7 +250,7 @@ cxb register
 
 ```bash
 npm run build
-cxb restart
+crb restart
 ```
 
 ### Windows 新项目卡在 trust prompt

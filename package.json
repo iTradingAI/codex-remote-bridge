@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Discord-first bridge for Codex CLI sessions over tmux.",
   "bin": {
-    "cxb": "./dist/src/cli/index.js"
+    "crb": "./dist/src/cli/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

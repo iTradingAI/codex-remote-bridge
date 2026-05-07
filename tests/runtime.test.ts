@@ -150,7 +150,7 @@ describe("CodexTmuxRuntime", () => {
     );
     const deleteBuffer = runner.calls.find((call) => call.args.includes("delete-buffer"));
     const bufferName = argAfter(setBuffer?.args ?? [], "-b");
-    expect(bufferName).toMatch(/^cxb-codex-test-/);
+    expect(bufferName).toMatch(/^crb-codex-test-/);
     expect(setBuffer?.args).toEqual(expect.arrayContaining(["load-buffer", "-"]));
     expect(setBuffer?.input).toBe("hello");
     expect(argAfter(pasteBuffer?.args ?? [], "-b")).toBe(bufferName);

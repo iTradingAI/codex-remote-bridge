@@ -91,7 +91,7 @@ export class CodexTmuxRuntime implements CodexRuntime {
   }
 
   async send(session: RuntimeSession, text: string): Promise<void> {
-    const bufferName = `cxb-${session.tmuxSession}-${Date.now()}-${Math.random()
+    const bufferName = `crb-${session.tmuxSession}-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2)}`;
     const loadBuffer = await this.runBuilt(this.builder.loadBuffer(bufferName), text);

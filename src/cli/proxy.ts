@@ -3,7 +3,7 @@ import { HttpsProxyAgent } from "https-proxy-agent";
 import { ProxyAgent, setGlobalDispatcher } from "undici";
 
 export const PROXY_ENV_PRIORITY = [
-  "CXB_PROXY",
+  "CRB_PROXY",
   "DISCORD_PROXY",
   "HTTPS_PROXY",
   "https_proxy",
@@ -59,8 +59,8 @@ export function maskProxyUrl(value: string): string {
 
 function installWsProxy(proxyUrl: string): void {
   const require = createRequire(import.meta.url);
-  const ws = require("ws") as typeof import("ws") & { __cxbProxyUrl?: string };
-  if (ws.__cxbProxyUrl === proxyUrl) return;
+  const ws = require("ws") as typeof import("ws") & { __crbProxyUrl?: string };
+  if (ws.__crbProxyUrl === proxyUrl) return;
 
   const OriginalWebSocket = ws.WebSocket;
   class ProxiedWebSocket extends OriginalWebSocket {
@@ -80,5 +80,5 @@ function installWsProxy(proxyUrl: string): void {
   });
 
   ws.WebSocket = ProxiedWebSocket as typeof OriginalWebSocket;
-  ws.__cxbProxyUrl = proxyUrl;
+  ws.__crbProxyUrl = proxyUrl;
 }

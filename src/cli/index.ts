@@ -48,31 +48,23 @@ try {
     });
   } else {
     console.log(`用法:
-  cxb setup [--output config/bridge.local.json] [--force] [--answers setup-answers.json] [--no-start] [--no-post-setup]
+  crb setup [--output config/bridge.local.json] [--force] [--answers setup-answers.json] [--no-start] [--no-post-setup]
     初始化本机配置。默认会健康检查、注册 Discord 命令，并启动 Bridge。
-
-  cxb up [--config config/bridge.local.json]
+  crb up [--config config/bridge.local.json]
     启动本机 Bridge 驻留进程。每台真实电脑只需要一个。
-
-  cxb down [--config config/bridge.local.json]
+  crb down [--config config/bridge.local.json]
     停止本机 Bridge，并清理 data/.bridge.lock。
-
-  cxb restart [--config config/bridge.local.json]
+  crb restart [--config config/bridge.local.json]
     重启本机 Bridge。
-
-  cxb status [--config config/bridge.local.json]
+  crb status [--config config/bridge.local.json]
     检查配置、Discord 连接、tmux/Codex 可用性和已绑定项目。
-
-  cxb doctor [--config config/bridge.local.json]
-    status 的别名，用于环境诊断。
-
-  cxb register [--config config/bridge.local.json]
+  crb doctor [--config config/bridge.local.json]
+    status 的诊断别名，用于环境诊断。
+  crb register [--config config/bridge.local.json]
     注册或刷新 Discord slash commands。
-
-  cxb hook [--config config/bridge.local.json] [--event-file event.json]
+  crb hook [--config config/bridge.local.json] [--event-file event.json]
     写入本机 hook 事件队列，由正在运行的 Bridge 转发到 Discord。
-
-兼容别名:
+兼容子命令:
   start=up, stop=down, health=status, register-commands=register`);
   }
 } catch (error) {
