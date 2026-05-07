@@ -11,6 +11,7 @@ import { storagePaths } from "../storage/paths.js";
 import { readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { stopDaemonSession } from "./daemon.js";
+import { installConsoleRuntimeLog } from "../storage/runtime-log.js";
 
 export function getDiscordToken(config: BridgeConfig): string {
   if (looksLikeDiscordToken(config.discord.tokenEnv)) {
@@ -123,17 +124,22 @@ export async function runRegisterCommands(configPath: string): Promise<void> {
 
 export async function runStart(configPath: string): Promise<void> {
   const bridge = await createBridge(configPath);
+  const restoreConsole = installConsoleRuntimeLog(bridge.logsPath);
   const provider = new DiscordProviderAdapter(bridge.config);
   const hookQueue = new LocalHookEventQueue(storagePaths(bridge.config).eventQueueDir);
   let hookTimer: NodeJS.Timeout | undefined;
+  let gcTimer: NodeJS.Timeout | undefined;
   let hookDrainRunning = false;
+  let gcRunning = false;
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;
     shuttingDown = true;
     if (hookTimer) clearInterval(hookTimer);
+    if (gcTimer) clearInterval(gcTimer);
     await provider.destroy();
     await bridge.release();
+    restoreConsole();
   };
   process.once("SIGINT", () => {
     void shutdown().finally(() => process.exit(0));
@@ -181,7 +187,21 @@ export async function runStart(configPath: string): Promise<void> {
         hookDrainRunning = false;
       });
   }, 1000);
-  console.log(
+  const idleMinutes = codexIdleMinutes();
+  if (idleMinutes > 0) {
+    gcTimer = setInterval(() => {
+      if (gcRunning) return;
+      gcRunning = true;
+      void reapIdleProjectSessions(bridge, idleMinutes)
+        .catch((error) => {
+          console.error(`Codex idle session cleanup failed: ${(error as Error).message}`);
+        })
+        .finally(() => {
+          gcRunning = false;
+        });
+    }, 10 * 60 * 1000);
+  }
+  console.info(
     `Discord bridge logged in as ${session.username ?? "unknown"} (${session.userId ?? "unknown id"}).`
   );
   await bridge.audit.append({
@@ -282,4 +302,41 @@ async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boole
     await sleep(200);
   }
   return !isProcessAlive(pid);
+}
+
+async function reapIdleProjectSessions(
+  bridge: Awaited<ReturnType<typeof createBridge>>,
+  idleMinutes: number
+): Promise<void> {
+  const bindings = await bridge.bindings.listForMachine();
+  const skipBindingIds = new Set<string>();
+  for (const binding of bindings) {
+    const state = await bridge.executionStates.get(binding);
+    if (state.state === "queued" || state.state === "thinking" || state.state === "executing") {
+      skipBindingIds.add(binding.id);
+    }
+  }
+  const stopped =
+    (await bridge.runtime.reapIdleSessions?.(bindings, {
+      idleMs: idleMinutes * 60 * 1000,
+      skipBindingIds
+    })) ?? [];
+  for (const session of stopped) {
+    console.info(`Reaped idle Codex tmux session ${session.tmuxSession}.`);
+    await bridge.audit.append({
+      at: new Date().toISOString(),
+      machineId: bridge.config.machineId,
+      bindingId: session.bindingId,
+      action: "runtime.reap_idle_session",
+      allowed: true,
+      summary: `Stopped idle tmux session ${session.tmuxSession}`
+    });
+  }
+}
+
+function codexIdleMinutes(): number {
+  const raw = process.env.CRB_CODEX_IDLE_MINUTES;
+  if (!raw) return 120;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : 120;
 }

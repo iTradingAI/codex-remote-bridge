@@ -1,5 +1,5 @@
 import type { BridgeConfig, ProjectBinding } from "../../types.js";
-import { safeTmuxSessionName, windowsPathToWslPath } from "../platform/windows-path.js";
+import { quoteShell, safeTmuxSessionName, windowsPathToWslPath } from "../platform/windows-path.js";
 
 export type RuntimePlatform = "posix" | "windows-wsl";
 
@@ -27,15 +27,8 @@ export class TmuxCommandBuilder {
     return this.wrap(this.config.runtime.tmuxCommand, ["has-session", "-t", sessionName]);
   }
 
-  newSession(binding: ProjectBinding): BuiltCommand {
-    return this.wrap(this.config.runtime.tmuxCommand, [
-      "new-session",
-      "-d",
-      "-s",
-      this.sessionName(binding),
-      "-c",
-      this.projectPath(binding.projectPath),
-      this.config.runtime.codexCommand,
+  newSession(binding: ProjectBinding, options: { resumeLast?: boolean } = {}): BuiltCommand {
+    const codexArgs = [
       "--sandbox",
       "danger-full-access",
       "--ask-for-approval",
@@ -43,6 +36,25 @@ export class TmuxCommandBuilder {
       "-c",
       projectTrustOverride(this.projectPath(binding.projectPath)),
       "--no-alt-screen"
+    ];
+    const command = options.resumeLast
+      ? [
+          "sh",
+          "-lc",
+          `${shellCommand([this.config.runtime.codexCommand, "resume", "--last", ...codexArgs])} || exec ${shellCommand([
+            this.config.runtime.codexCommand,
+            ...codexArgs
+          ])}`
+        ]
+      : [this.config.runtime.codexCommand, ...codexArgs];
+    return this.wrap(this.config.runtime.tmuxCommand, [
+      "new-session",
+      "-d",
+      "-s",
+      this.sessionName(binding),
+      "-c",
+      this.projectPath(binding.projectPath),
+      ...command
     ]);
   }
 
@@ -120,4 +132,8 @@ export function projectTrustOverride(projectPath: string): string {
 
 function tomlQuotedKey(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function shellCommand(parts: string[]): string {
+  return parts.map(quoteShell).join(" ");
 }

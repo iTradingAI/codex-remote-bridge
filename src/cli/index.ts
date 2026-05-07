@@ -18,6 +18,21 @@ try {
 
   if (command === "health" || command === "status" || command === "doctor") {
     await operations.runHealth(configPath);
+  } else if (command === "logs") {
+    const { runLogs } = await import("./logs.js");
+    await runLogs(configPath, {
+      lines: readNumberFlag(args, "--tail") ?? readNumberFlag(args, "--lines") ?? 100,
+      errorsOnly: hasFlag(args, "--errors"),
+      audit: hasFlag(args, "--audit")
+    });
+  } else if (command === "update") {
+    const { runUpdate } = await import("./update.js");
+    await runUpdate({
+      configPath,
+      force: hasFlag(args, "--force"),
+      skipRegister: hasFlag(args, "--skip-register"),
+      skipRestart: hasFlag(args, "--skip-restart")
+    });
   } else if (command === "daemon" || (command === "up" && hasFlag(args, "--daemon"))) {
     const { runDaemonStart } = await import("./daemon.js");
     await runDaemonStart(configPath);
@@ -72,6 +87,10 @@ try {
     查看后台 tmux Bridge 会话是否还在运行。
   crb daemon-stop [--config config/bridge.local.json]
     停止后台 tmux Bridge 会话。
+  crb update [--config config/bridge.local.json] [--force] [--skip-register] [--skip-restart]
+    一键拉取、安装依赖、构建、link、注册 Discord 命令并重启后台 Bridge。
+  crb logs [--config config/bridge.local.json] [--tail 100] [--errors] [--audit]
+    查看 Bridge 运行日志或审计日志。
   crb down [--config config/bridge.local.json]
     停止本机 Bridge，并清理 data/.bridge.lock。
   crb restart [--config config/bridge.local.json]
@@ -100,4 +119,14 @@ function readFlag(values: string[], name: string): string | undefined {
 
 function hasFlag(values: string[], name: string): boolean {
   return values.includes(name);
+}
+
+function readNumberFlag(values: string[], name: string): number | undefined {
+  const raw = readFlag(values, name);
+  if (raw == null) return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return value;
 }

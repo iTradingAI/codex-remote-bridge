@@ -161,6 +161,8 @@ export interface RuntimeSession {
   startedAt?: string;
   lastSeenAt: string;
   outputCursor?: RuntimeOutputCursor;
+  resumeHint?: "last";
+  stoppedAt?: string;
 }
 
 export interface RuntimeOutputCursor {

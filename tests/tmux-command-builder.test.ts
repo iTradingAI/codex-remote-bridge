@@ -61,6 +61,26 @@ describe("TmuxCommandBuilder", () => {
     });
   });
 
+  it("can start Codex by resuming the last project session with fallback", () => {
+    const builder = new TmuxCommandBuilder(testConfig(), "posix");
+    const command = builder.newSession(binding, { resumeLast: true });
+
+    expect(command.file).toBe("tmux");
+    expect(command.args.slice(0, 6)).toEqual([
+      "new-session",
+      "-d",
+      "-s",
+      "codex-binding-1",
+      "-c",
+      "E:\\Projects\\codex-remote-bridge"
+    ]);
+    expect(command.args[6]).toBe("sh");
+    expect(command.args[7]).toBe("-lc");
+    expect(command.args[8]).toContain("'codex' 'resume' '--last'");
+    expect(command.args[8]).toContain("|| exec 'codex'");
+    expect(command.args[8]).toContain("--no-alt-screen");
+  });
+
   it("quotes project paths for Codex config overrides", () => {
     expect(projectTrustOverride('/tmp/has"quote')).toBe(
       'projects."/tmp/has\\"quote".trust_level="trusted"'

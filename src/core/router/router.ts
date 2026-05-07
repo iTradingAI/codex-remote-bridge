@@ -357,7 +357,7 @@ export class CommandRouter {
         await sink?.update({
           kind: "status",
           title: "Queued",
-          text: "This project is busy. Your message is queued and will run after the current Codex task finishes."
+          text: "当前项目正在处理上一条消息，这条消息已进入队列，会在当前任务结束后自动执行。"
         });
       }
       recent = await this.runForBinding(binding, async () => {
@@ -365,7 +365,7 @@ export class CommandRouter {
         await sink?.update({
           kind: "status",
           title: "Codex Running",
-          text: "Codex has started working on this message."
+          text: "已送入 Codex，正在等待当前回合开始输出。"
         });
         const session = await this.runtime.ensureSession(binding);
         return await this.runtime.sendAndWaitForOutput(session, text, {
@@ -380,7 +380,7 @@ export class CommandRouter {
             sink?.update({
               kind: "status",
               title: "Codex Running",
-              text: status
+              text: formatRuntimeStatus(status)
             }),
           onUpdate: (output) =>
             sink?.update({
@@ -504,4 +504,14 @@ function stringArg(command: InboundCommand, name: string): string {
 
 function ownedParentScope(config: BridgeConfig): string {
   return config.discord.allowedScopes[0]?.conversationId ?? "not configured";
+}
+
+function formatRuntimeStatus(status: string): string {
+  if (status.includes("Message delivered to Codex")) {
+    return "消息已送达 Codex，正在等待当前回合开始输出。";
+  }
+  if (status.includes("Still connected")) {
+    return "通道仍然在线，正在等待 Codex 显示当前这条消息的回显，暂不推送旧输出。";
+  }
+  return status;
 }

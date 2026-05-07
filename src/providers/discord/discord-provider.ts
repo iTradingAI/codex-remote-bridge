@@ -35,12 +35,12 @@ export type OwnershipRejectHandler = (event: {
 }) => Promise<void>;
 
 export const MESSAGE_STATUS_REACTIONS = {
-  received: "📥",
-  thinking: "🤔",
-  executing: "⚙️",
-  done: "✅",
-  failed: "❌",
-  rejected: "🚫"
+  received: "\uD83D\uDCE5",
+  thinking: "\uD83E\uDD14",
+  executing: "\u2699\uFE0F",
+  done: "\u2705",
+  failed: "\u274C",
+  rejected: "\u26D4"
 } as const;
 
 type InteractionReplyMode = "interaction" | "channel";

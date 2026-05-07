@@ -12,4 +12,6 @@ export * from "./runtime/codex-tmux/tmux-command-builder.js";
 export * from "./runtime/platform/windows-path.js";
 export * from "./hooks/hook-ingress.js";
 export * from "./cli/daemon.js";
+export * from "./cli/logs.js";
 export * from "./cli/setup.js";
+export * from "./cli/update.js";

@@ -55,6 +55,8 @@ Bot 建议权限：
 CRB_PROXY=http://127.0.0.1:7890
 ```
 
+`CRB_CODEX_IDLE_MINUTES` 控制 on-demand 项目的 Codex/tmux 会话空闲回收时间，默认 `120` 分钟。Bridge 自身不会被定时退出；只回收项目会话。设置为 `0` 可关闭自动回收。被回收的项目下次启动会优先用 `codex resume --last` 接回该项目最近一次 Codex 对话。
+
 运行时代理读取顺序：
 
 ```text
@@ -169,6 +171,8 @@ crb down       # 停止 Bridge，并清理锁
 crb restart    # 重启后台 tmux Bridge
 crb daemon-status # 查看后台 tmux Bridge 会话
 crb daemon-stop   # 只停止后台 tmux Bridge 会话
+crb update     # 拉取、安装、构建、link、注册命令并重启
+crb logs       # 查看 Bridge 运行日志
 crb status     # 检查配置、Discord、tmux、Codex、绑定状态
 crb doctor     # status 的诊断别名
 crb register   # 重新注册 Discord slash commands

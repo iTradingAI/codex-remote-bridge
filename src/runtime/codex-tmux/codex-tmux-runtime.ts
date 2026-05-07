@@ -26,6 +26,10 @@ export interface CodexRuntime {
   readRecent(session: RuntimeSession, lines?: number): Promise<string>;
   status(session: RuntimeSession): Promise<SessionStatus>;
   stop(session: RuntimeSession): Promise<void>;
+  reapIdleSessions?(
+    bindings: ProjectBinding[],
+    options: { idleMs: number; skipBindingIds?: Set<string>; now?: Date }
+  ): Promise<RuntimeSession[]>;
 }
 
 export class CodexTmuxRuntime implements CodexRuntime {
@@ -65,14 +69,17 @@ export class CodexTmuxRuntime implements CodexRuntime {
       throw new Error(`Codex tmux runtime is unavailable: ${capability.detail ?? "unknown"}`);
     }
 
-    const created = await this.runBuilt(this.builder.newSession(binding));
+    const stored = await this.readStoredSession(binding);
+    const created = await this.runBuilt(
+      this.builder.newSession(binding, { resumeLast: stored?.resumeHint === "last" })
+    );
     if (created.exitCode !== 0) {
       throw new Error(`Failed to start tmux session: ${created.stderr || created.stdout}`);
     }
 
     const session = this.sessionFromBinding(binding);
     await this.waitForReadyPrompt(session);
-    return this.saveSession(session);
+    return this.saveSession({ ...session, resumeHint: "last", stoppedAt: undefined });
   }
 
   async discoverExisting(binding: ProjectBinding): Promise<RuntimeSession | null> {
@@ -233,6 +240,33 @@ export class CodexTmuxRuntime implements CodexRuntime {
     if (result.exitCode !== 0) {
       throw new Error(`Failed to stop tmux session: ${result.stderr || result.stdout}`);
     }
+    await this.markSessionStopped(session);
+  }
+
+  async reapIdleSessions(
+    bindings: ProjectBinding[],
+    options: { idleMs: number; skipBindingIds?: Set<string>; now?: Date }
+  ): Promise<RuntimeSession[]> {
+    const now = options.now?.getTime() ?? Date.now();
+    const sessions = await this.sessions.read();
+    const stopped: RuntimeSession[] = [];
+    for (const binding of bindings) {
+      if (binding.sessionMode === "pinned") continue;
+      if (options.skipBindingIds?.has(binding.id)) continue;
+      const session = sessions.sessions.find(
+        (item) => item.bindingId === binding.id && item.machineId === this.config.machineId
+      );
+      if (!session) continue;
+      if (now - lastActivityAt(session) < options.idleMs) continue;
+      const status = await this.status(session).catch(() => ({ state: "missing" as const }));
+      if (status.state !== "running") {
+        await this.markSessionStopped(session);
+        continue;
+      }
+      await this.stop(session);
+      stopped.push(session);
+    }
+    return stopped;
   }
 
   private async saveSession(session: RuntimeSession): Promise<RuntimeSession> {
@@ -263,6 +297,13 @@ export class CodexTmuxRuntime implements CodexRuntime {
     )?.outputCursor;
   }
 
+  private async readStoredSession(binding: ProjectBinding) {
+    const document = await this.sessions.read();
+    return document.sessions.find(
+      (item) => item.bindingId === binding.id && item.machineId === this.config.machineId
+    );
+  }
+
   private async saveOutputCursor(
     session: RuntimeSession,
     capturedPane: string,
@@ -276,12 +317,36 @@ export class CodexTmuxRuntime implements CodexRuntime {
       if (index >= 0) {
         document.sessions[index] = {
           ...document.sessions[index],
+          lastSeenAt: new Date().toISOString(),
           outputCursor: {
             tail,
             updatedAt: new Date().toISOString(),
             messageId
           }
         };
+      }
+      return document;
+    });
+  }
+
+  private async markSessionStopped(session: RuntimeSession): Promise<void> {
+    await this.sessions.update((document) => {
+      const index = document.sessions.findIndex(
+        (item) => item.bindingId === session.bindingId && item.machineId === session.machineId
+      );
+      if (index >= 0) {
+        document.sessions[index] = {
+          ...document.sessions[index],
+          lastSeenAt: new Date().toISOString(),
+          resumeHint: "last",
+          stoppedAt: new Date().toISOString()
+        };
+      } else {
+        document.sessions.push({
+          ...session,
+          resumeHint: "last",
+          stoppedAt: new Date().toISOString()
+        });
       }
       return document;
     });
@@ -602,4 +667,12 @@ async function reportStatus(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function lastActivityAt(session: RuntimeSession): number {
+  return Math.max(
+    Date.parse(session.outputCursor?.updatedAt ?? "") || 0,
+    Date.parse(session.lastSeenAt) || 0,
+    Date.parse(session.startedAt ?? "") || 0
+  );
 }

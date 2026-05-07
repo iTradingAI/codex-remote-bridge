@@ -123,6 +123,31 @@ describe("CodexTmuxRuntime", () => {
     expect(runner.calls.some((call) => call.args.includes("new-session"))).toBe(false);
   });
 
+  it("uses codex resume after a stopped session leaves a resume hint", async () => {
+    const dir = await tempDir();
+    const runner = new FakeRunner();
+    const store = new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions);
+    const runtime = new CodexTmuxRuntime(testConfig({ dataDir: dir }), store, runner);
+    const project = binding(dir);
+    const session = {
+      bindingId: project.id,
+      machineId: "test-machine",
+      projectPath: dir,
+      tmuxSession: "codex-test",
+      lastSeenAt: new Date().toISOString()
+    };
+
+    runner.sessionExists = true;
+    await runtime.stop(session);
+    runner.sessionExists = false;
+    runner.paneOutputs = ["OpenAI Codex\n\n› \n"];
+    await runtime.ensureSession(project);
+
+    const newSession = [...runner.calls].reverse().find((call) => call.args.includes("new-session"));
+    expect(newSession?.args).toContain("sh");
+    expect(newSession?.args.join(" ")).toContain("'codex' 'resume' '--last'");
+  });
+
   it("uses a unique tmux buffer for each send and deletes it", async () => {
     const dir = await tempDir();
     const runner = new FakeRunner();
