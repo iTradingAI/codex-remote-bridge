@@ -121,10 +121,10 @@ crb setup
 - `config/bridge.local.json`
 - `.env.local`
 
-2. 如果 setup 没有自动启动，手动启动：
+2. 如果 setup 没有自动启动，手动启动后台驻留：
 
 ```bash
-crb up
+crb daemon
 ```
 
 3. 在 Discord 的机器 parent channel/Forum 下创建或打开一个子 thread，绑定项目：
@@ -163,9 +163,12 @@ Windows 路径示例：
 
 ```bash
 crb setup      # 初始化配置
-crb up         # 启动 Bridge
+crb daemon     # 自动在 tmux 后台启动 Bridge，终端可以关闭
+crb up         # 前台启动 Bridge，适合临时调试
 crb down       # 停止 Bridge，并清理锁
-crb restart    # 重启 Bridge
+crb restart    # 重启后台 tmux Bridge
+crb daemon-status # 查看后台 tmux Bridge 会话
+crb daemon-stop   # 只停止后台 tmux Bridge 会话
 crb status     # 检查配置、Discord、tmux、Codex、绑定状态
 crb doctor     # status 的诊断别名
 crb register   # 重新注册 Discord slash commands
@@ -231,7 +234,7 @@ node_modules/
 
 ```bash
 crb down
-crb up
+crb daemon
 ```
 
 ### Bot 在线但 slash command 不可用

@@ -5,7 +5,8 @@ import { dirname } from "node:path";
 import { createInterface, type Interface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { isEnvVarName, looksLikeDiscordToken, upsertLocalEnvValue } from "./env.js";
-import { isBridgeLockError, runHealth, runRegisterCommands, runStart } from "./operations.js";
+import { isBridgeLockError, runHealth, runRegisterCommands } from "./operations.js";
+import { runDaemonStart } from "./daemon.js";
 import { repairUtf8DecodedAsGbkList } from "../encoding/mojibake.js";
 
 const CONFIRMATION_KEYWORDS = ["commit", "push", "merge", "delete", "deploy", "reset"];
@@ -233,13 +234,13 @@ async function runPostSetup(options: SetupOptions): Promise<void> {
   await runRegisterCommands(options.outputPath);
 
   if (options.startAfterSetup === false) {
-    output.write(`Bridge is configured. Start later with: crb up --config ${options.outputPath}\n`);
+    output.write(`Bridge is configured. Start later with: crb daemon --config ${options.outputPath}\n`);
     return;
   }
 
-  output.write("Starting bridge. Leave this terminal open.\n");
+  output.write("Starting bridge in a background tmux session.\n");
   try {
-    await runStart(options.outputPath);
+    await runDaemonStart(options.outputPath);
   } catch (error) {
     if (!isBridgeLockError(error)) {
       throw error;

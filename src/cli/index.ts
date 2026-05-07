@@ -18,13 +18,27 @@ try {
 
   if (command === "health" || command === "status" || command === "doctor") {
     await operations.runHealth(configPath);
+  } else if (command === "daemon" || (command === "up" && hasFlag(args, "--daemon"))) {
+    const { runDaemonStart } = await import("./daemon.js");
+    await runDaemonStart(configPath);
+  } else if (command === "daemon-status") {
+    const { runDaemonStatus } = await import("./daemon.js");
+    await runDaemonStatus(configPath);
+  } else if (command === "daemon-stop") {
+    const { runDaemonStop } = await import("./daemon.js");
+    await runDaemonStop(configPath);
   } else if (command === "start" || command === "up") {
     await operations.runStart(configPath);
   } else if (command === "stop" || command === "down") {
     await operations.runStop(configPath);
   } else if (command === "restart") {
     await operations.runStop(configPath);
-    await operations.runStart(configPath);
+    if (hasFlag(args, "--foreground")) {
+      await operations.runStart(configPath);
+    } else {
+      const { runDaemonStart } = await import("./daemon.js");
+      await runDaemonStart(configPath);
+    }
   } else if (command === "register-commands" || command === "register") {
     await operations.runRegisterCommands(configPath);
   } else if (command === "hook") {
@@ -51,11 +65,17 @@ try {
   crb setup [--output config/bridge.local.json] [--force] [--answers setup-answers.json] [--no-start] [--no-post-setup]
     初始化本机配置。默认会健康检查、注册 Discord 命令，并启动 Bridge。
   crb up [--config config/bridge.local.json]
-    启动本机 Bridge 驻留进程。每台真实电脑只需要一个。
+    前台启动本机 Bridge，适合临时调试。
+  crb daemon [--config config/bridge.local.json]
+    自动在 tmux 后台会话中启动 Bridge，终端关闭后仍继续运行。
+  crb daemon-status [--config config/bridge.local.json]
+    查看后台 tmux Bridge 会话是否还在运行。
+  crb daemon-stop [--config config/bridge.local.json]
+    停止后台 tmux Bridge 会话。
   crb down [--config config/bridge.local.json]
     停止本机 Bridge，并清理 data/.bridge.lock。
   crb restart [--config config/bridge.local.json]
-    重启本机 Bridge。
+    重启后台 tmux Bridge。加 --foreground 可改为前台启动。
   crb status [--config config/bridge.local.json]
     检查配置、Discord 连接、tmux/Codex 可用性和已绑定项目。
   crb doctor [--config config/bridge.local.json]

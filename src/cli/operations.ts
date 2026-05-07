@@ -10,6 +10,7 @@ import { routeHookEvent } from "../hooks/hook-ingress.js";
 import { storagePaths } from "../storage/paths.js";
 import { readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
+import { stopDaemonSession } from "./daemon.js";
 
 export function getDiscordToken(config: BridgeConfig): string {
   if (looksLikeDiscordToken(config.discord.tokenEnv)) {
@@ -196,6 +197,17 @@ export async function runStart(configPath: string): Promise<void> {
 export async function runStop(configPath: string): Promise<void> {
   const config = await loadBridgeConfig(configPath);
   const lockPath = join(config.dataDir, ".bridge.lock");
+  const daemon = await stopDaemonSession(config, configPath).catch((error) => {
+    if ((error as Error).message.includes("Failed to stop bridge daemon tmux session")) {
+      throw error;
+    }
+    return { stopped: false, sessionName: "" };
+  });
+  if (daemon.stopped) {
+    await unlink(lockPath).catch(() => undefined);
+    console.log(`Stopped bridge daemon tmux session ${daemon.sessionName}.`);
+    return;
+  }
   const pid = await readLockPid(lockPath);
   if (!pid) {
     await unlink(lockPath).catch(() => undefined);
