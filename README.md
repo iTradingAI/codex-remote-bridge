@@ -55,7 +55,9 @@ Bot 建议权限：
 CRB_PROXY=http://127.0.0.1:7890
 ```
 
-`CRB_CODEX_IDLE_MINUTES` 控制 on-demand 项目的 Codex/tmux 会话空闲回收时间，默认 `120` 分钟。Bridge 自身不会被定时退出；只回收项目会话。设置为 `0` 可关闭自动回收。被回收的项目下次启动会优先用 `codex resume --last` 接回该项目最近一次 Codex 对话。
+`CRB_CODEX_IDLE_MINUTES` 控制 on-demand 项目的 Codex/tmux 会话空闲回收时间，默认 `120` 分钟。Bridge 自身不会被定时退出；只回收项目会话。设置为 `0` 可关闭自动回收。
+
+Codex 恢复策略默认是 `CRB_CODEX_RESUME_MODE=smart`：被回收或异常丢失的项目会话会在 `CRB_CODEX_RESUME_MAX_MINUTES=1440` 分钟内优先用 `codex resume --last` 接回；超过窗口会开新会话。可设为 `never` 禁止 slash 命令自动接回，或 `always` 始终接回。Discord 中也可以用 `/codex resume` 明确接旧，或 `/codex new` 明确开新。没有加 `/codex` 的普通消息会优先接回最近会话。
 
 运行时代理读取顺序：
 

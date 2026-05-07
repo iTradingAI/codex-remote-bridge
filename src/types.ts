@@ -22,6 +22,7 @@ export type CommandName =
   | "status"
   | "start"
   | "resume"
+  | "new"
   | "pin"
   | "unpin"
   | "send"

@@ -14,7 +14,7 @@ import { TmuxCommandBuilder, type RuntimePlatform } from "./tmux-command-builder
 
 export interface CodexRuntime {
   detect(): Promise<RuntimeCapability>;
-  ensureSession(binding: ProjectBinding): Promise<RuntimeSession>;
+  ensureSession(binding: ProjectBinding, options?: EnsureSessionOptions): Promise<RuntimeSession>;
   discoverExisting(binding: ProjectBinding): Promise<RuntimeSession | null>;
   reconcile(binding: ProjectBinding): Promise<RuntimeSession>;
   send(session: RuntimeSession, text: string): Promise<void>;
@@ -25,11 +25,20 @@ export interface CodexRuntime {
   ): Promise<string>;
   readRecent(session: RuntimeSession, lines?: number): Promise<string>;
   status(session: RuntimeSession): Promise<SessionStatus>;
-  stop(session: RuntimeSession): Promise<void>;
+  stop(session: RuntimeSession, options?: StopSessionOptions): Promise<void>;
   reapIdleSessions?(
     bindings: ProjectBinding[],
     options: { idleMs: number; skipBindingIds?: Set<string>; now?: Date }
   ): Promise<RuntimeSession[]>;
+}
+
+export interface EnsureSessionOptions {
+  resume?: "auto" | "last" | "never";
+  now?: Date;
+}
+
+export interface StopSessionOptions {
+  resume?: "last" | "none";
 }
 
 export class CodexTmuxRuntime implements CodexRuntime {
@@ -58,7 +67,7 @@ export class CodexTmuxRuntime implements CodexRuntime {
     };
   }
 
-  async ensureSession(binding: ProjectBinding): Promise<RuntimeSession> {
+  async ensureSession(binding: ProjectBinding, options: EnsureSessionOptions = {}): Promise<RuntimeSession> {
     const existing = await this.discoverExisting(binding);
     if (existing) {
       return this.saveSession(existing);
@@ -71,7 +80,7 @@ export class CodexTmuxRuntime implements CodexRuntime {
 
     const stored = await this.readStoredSession(binding);
     const created = await this.runBuilt(
-      this.builder.newSession(binding, { resumeLast: stored?.resumeHint === "last" })
+      this.builder.newSession(binding, { resumeLast: shouldResumeLast(stored, options) })
     );
     if (created.exitCode !== 0) {
       throw new Error(`Failed to start tmux session: ${created.stderr || created.stdout}`);
@@ -235,12 +244,16 @@ export class CodexTmuxRuntime implements CodexRuntime {
     return { state: "running", session };
   }
 
-  async stop(session: RuntimeSession): Promise<void> {
+  async stop(session: RuntimeSession, options: StopSessionOptions = {}): Promise<void> {
     const result = await this.runBuilt(this.builder.killSession(session.tmuxSession));
     if (result.exitCode !== 0) {
       throw new Error(`Failed to stop tmux session: ${result.stderr || result.stdout}`);
     }
-    await this.markSessionStopped(session);
+    if (options.resume === "last") {
+      await this.markSessionStopped(session);
+    } else {
+      await this.clearResumeHint(session);
+    }
   }
 
   async reapIdleSessions(
@@ -263,7 +276,7 @@ export class CodexTmuxRuntime implements CodexRuntime {
         await this.markSessionStopped(session);
         continue;
       }
-      await this.stop(session);
+      await this.stop(session, { resume: "last" });
       stopped.push(session);
     }
     return stopped;
@@ -347,6 +360,22 @@ export class CodexTmuxRuntime implements CodexRuntime {
           resumeHint: "last",
           stoppedAt: new Date().toISOString()
         });
+      }
+      return document;
+    });
+  }
+
+  private async clearResumeHint(session: RuntimeSession): Promise<void> {
+    await this.sessions.update((document) => {
+      const index = document.sessions.findIndex(
+        (item) => item.bindingId === session.bindingId && item.machineId === session.machineId
+      );
+      if (index >= 0) {
+        const { resumeHint: _resumeHint, stoppedAt: _stoppedAt, ...rest } = document.sessions[index];
+        document.sessions[index] = {
+          ...rest,
+          lastSeenAt: new Date().toISOString()
+        };
       }
       return document;
     });
@@ -675,4 +704,34 @@ function lastActivityAt(session: RuntimeSession): number {
     Date.parse(session.lastSeenAt) || 0,
     Date.parse(session.startedAt ?? "") || 0
   );
+}
+
+function shouldResumeLast(
+  stored: RuntimeSession | undefined,
+  options: EnsureSessionOptions
+): boolean {
+  if (options.resume === "last") return true;
+  if (options.resume === "never") return false;
+  if (stored?.resumeHint !== "last") return false;
+
+  const mode = resumeMode();
+  if (mode === "never") return false;
+  if (mode === "always") return true;
+
+  const maxMinutes = resumeMaxMinutes();
+  if (maxMinutes <= 0) return false;
+  const resumeAt = Date.parse(stored.stoppedAt ?? stored.lastSeenAt);
+  if (!Number.isFinite(resumeAt)) return false;
+  const now = options.now?.getTime() ?? Date.now();
+  return now - resumeAt <= maxMinutes * 60 * 1000;
+}
+
+function resumeMode(): "smart" | "always" | "never" {
+  const value = process.env.CRB_CODEX_RESUME_MODE?.trim().toLowerCase();
+  return value === "always" || value === "never" ? value : "smart";
+}
+
+function resumeMaxMinutes(): number {
+  const value = Number(process.env.CRB_CODEX_RESUME_MAX_MINUTES ?? "1440");
+  return Number.isFinite(value) ? value : 1440;
 }

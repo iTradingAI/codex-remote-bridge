@@ -57,6 +57,7 @@ export class CommandRouter {
           return await this.status(command);
         case "start":
         case "resume":
+        case "new":
           return await this.start(command);
         case "pin":
           return await this.pin(command);
@@ -104,7 +105,7 @@ export class CommandRouter {
     return {
       kind: "approval",
       title: "Confirm project binding",
-      text: `Reply with /codex confirm code:${approval.code} within 10 minutes to bind ${validation.resolvedPath}.`,
+      text: `点击下方“确认”按钮，或在 10 分钟内回复 /codex confirm code:${approval.code}，即可绑定 ${validation.resolvedPath}。`,
       actions: [confirmAction(approval.code)]
     };
   }
@@ -226,8 +227,14 @@ export class CommandRouter {
 
     let session: RuntimeSession;
     try {
-      await this.executionStates.set(binding, "executing", "Ensuring Codex session.");
-      session = await this.runtime.ensureSession(binding);
+      const resume =
+        command.command === "resume" ? "last" : command.command === "new" ? "never" : "auto";
+      await this.executionStates.set(
+        binding,
+        "executing",
+        command.command === "new" ? "Starting a new Codex session." : "Ensuring Codex session."
+      );
+      session = await this.runtime.ensureSession(binding, { resume });
       await this.executionStates.set(binding, "completed", "Codex session is ready.");
     } catch (error) {
       await this.executionStates.set(binding, "failed", (error as Error).message);
@@ -236,7 +243,12 @@ export class CommandRouter {
     await this.auditCommand(command, true, `session ensured ${session.tmuxSession}`, binding);
     return {
       kind: "status",
-      title: "Codex session ready",
+      title:
+        command.command === "new"
+          ? "New Codex session ready"
+          : command.command === "resume"
+            ? "Codex session resumed"
+            : "Codex session ready",
       text: `tmux session ${session.tmuxSession} is ready.`,
       fields: [
         { label: "project", value: binding.projectName },
@@ -341,7 +353,7 @@ export class CommandRouter {
       return {
         kind: "approval",
         title: "High-risk confirmation required",
-        text: `Reply with /codex confirm code:${approval.code} to send this message.`,
+        text: `这条消息包含高风险操作。点击下方“确认”按钮，或回复 /codex confirm code:${approval.code} 后才会发送给 Codex。`,
         actions: [confirmAction(approval.code)]
       };
     }
@@ -367,7 +379,9 @@ export class CommandRouter {
           title: "Codex Running",
           text: "已送入 Codex，正在等待当前回合开始输出。"
         });
-        const session = await this.runtime.ensureSession(binding);
+        const session = await this.runtime.ensureSession(binding, {
+          resume: command.rawText ? "last" : "auto"
+        });
         return await this.runtime.sendAndWaitForOutput(session, text, {
           timeoutMs: 600000,
           pollMs: 1000,
@@ -489,7 +503,7 @@ function promptHash(text: string): string {
 function confirmAction(code: string) {
   return {
     id: `confirm:${code}`,
-    label: "Confirm",
+    label: "确认",
     style: "success" as const
   };
 }

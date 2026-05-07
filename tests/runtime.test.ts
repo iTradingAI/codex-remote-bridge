@@ -123,7 +123,7 @@ describe("CodexTmuxRuntime", () => {
     expect(runner.calls.some((call) => call.args.includes("new-session"))).toBe(false);
   });
 
-  it("uses codex resume after a stopped session leaves a resume hint", async () => {
+  it("does not resume after an intentional stop clears the resume hint", async () => {
     const dir = await tempDir();
     const runner = new FakeRunner();
     const store = new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions);
@@ -144,8 +144,92 @@ describe("CodexTmuxRuntime", () => {
     await runtime.ensureSession(project);
 
     const newSession = [...runner.calls].reverse().find((call) => call.args.includes("new-session"));
+    expect(newSession?.args).not.toContain("sh");
+    expect(newSession?.args.join(" ")).not.toContain("'codex' 'resume' '--last'");
+  });
+
+  it("uses codex resume after an idle reap leaves a resume hint", async () => {
+    const dir = await tempDir();
+    const runner = new FakeRunner();
+    const store = new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions);
+    const runtime = new CodexTmuxRuntime(testConfig({ dataDir: dir }), store, runner);
+    const project = binding(dir);
+    const now = new Date();
+    await store.update((document) => {
+      document.sessions.push({
+        bindingId: project.id,
+        machineId: "test-machine",
+        projectPath: dir,
+        tmuxSession: "codex-test",
+        lastSeenAt: new Date(now.getTime() - 180 * 60 * 1000).toISOString()
+      });
+      return document;
+    });
+
+    runner.sessionExists = true;
+    await runtime.reapIdleSessions([project], { idleMs: 120 * 60 * 1000, now });
+    runner.sessionExists = false;
+    runner.paneOutputs = ["OpenAI Codex\n\n› \n"];
+    await runtime.ensureSession(project, { now });
+
+    const newSession = [...runner.calls].reverse().find((call) => call.args.includes("new-session"));
     expect(newSession?.args).toContain("sh");
     expect(newSession?.args.join(" ")).toContain("'codex' 'resume' '--last'");
+  });
+
+  it("can force a fresh session even when a resume hint exists", async () => {
+    const dir = await tempDir();
+    const runner = new FakeRunner();
+    const store = new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions);
+    const runtime = new CodexTmuxRuntime(testConfig({ dataDir: dir }), store, runner);
+    const project = binding(dir);
+    await store.update((document) => {
+      document.sessions.push({
+        bindingId: project.id,
+        machineId: "test-machine",
+        projectPath: dir,
+        tmuxSession: "codex-test",
+        lastSeenAt: new Date().toISOString(),
+        resumeHint: "last",
+        stoppedAt: new Date().toISOString()
+      });
+      return document;
+    });
+
+    runner.paneOutputs = ["OpenAI Codex\n\n› \n"];
+    await runtime.ensureSession(project, { resume: "never" });
+
+    const newSession = [...runner.calls].reverse().find((call) => call.args.includes("new-session"));
+    expect(newSession?.args).not.toContain("sh");
+    expect(newSession?.args.join(" ")).not.toContain("'codex' 'resume' '--last'");
+  });
+
+  it("does not auto-resume when the resume hint is outside the smart window", async () => {
+    const dir = await tempDir();
+    const runner = new FakeRunner();
+    const store = new JsonFileStore<SessionsDocument>(join(dir, "sessions.json"), emptySessions);
+    const runtime = new CodexTmuxRuntime(testConfig({ dataDir: dir }), store, runner);
+    const project = binding(dir);
+    const now = new Date();
+    await store.update((document) => {
+      document.sessions.push({
+        bindingId: project.id,
+        machineId: "test-machine",
+        projectPath: dir,
+        tmuxSession: "codex-test",
+        lastSeenAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        resumeHint: "last",
+        stoppedAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString()
+      });
+      return document;
+    });
+
+    runner.paneOutputs = ["OpenAI Codex\n\n› \n"];
+    await runtime.ensureSession(project, { now });
+
+    const newSession = [...runner.calls].reverse().find((call) => call.args.includes("new-session"));
+    expect(newSession?.args).not.toContain("sh");
+    expect(newSession?.args.join(" ")).not.toContain("'codex' 'resume' '--last'");
   });
 
   it("uses a unique tmux buffer for each send and deletes it", async () => {

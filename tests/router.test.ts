@@ -176,10 +176,11 @@ describe("CommandRouter", () => {
     });
 
     expect(response.kind).toBe("approval");
+    expect(response.text).toContain("点击下方");
     expect(response.actions).toEqual([
       expect.objectContaining({
         id: expect.stringMatching(/^confirm:/),
-        label: "Confirm",
+        label: "确认",
         style: "success"
       })
     ]);
@@ -248,7 +249,7 @@ describe("CommandRouter", () => {
     expect(pending.kind).toBe("approval");
     expect(pending.actions?.[0]).toMatchObject({
       id: expect.stringMatching(/^confirm:/),
-      label: "Confirm"
+      label: "确认"
     });
   });
 
@@ -285,6 +286,81 @@ describe("CommandRouter", () => {
     });
 
     expect(response).toMatchObject({ kind: "summary", text: "codex replied" });
+  });
+
+  it("natural direct messages force resume-last when direct injection is enabled", async () => {
+    const dir = await tempDir();
+    let resumeOption: unknown;
+    const runtime = fakeRuntime({
+      ensureSession: async (_binding, options) => {
+        resumeOption = options?.resume;
+        return {
+          bindingId: "binding-1",
+          machineId: "test-machine",
+          projectPath: dir,
+          tmuxSession: "codex-test",
+          lastSeenAt: new Date().toISOString()
+        };
+      }
+    });
+    const config = testConfig({
+      dataDir: dir,
+      policy: { authorizedUserIds: ["user-1"], allowDirectInjection: true, requireConfirmationFor: [] }
+    });
+    const registry = new BindingRegistry(
+      config,
+      new JsonFileStore<BindingsDocument>(join(dir, "bindings.json"), emptyBindings)
+    );
+    const conversation = {
+      provider: "discord" as const,
+      workspaceId: "guild:1",
+      conversationId: "channel:2/thread:project"
+    };
+    await registry.bind({ conversation, projectPath: dir });
+    const router = newTestRouter(dir, config, registry, new ProjectPathGuard([]), runtime);
+
+    await router.handle({
+      conversation,
+      actor: { id: "user-1" },
+      command: "send",
+      args: { text: "continue previous work" },
+      rawText: "continue previous work"
+    });
+
+    expect(resumeOption).toBe("last");
+  });
+
+  it("/codex new forces a non-resumed session", async () => {
+    const dir = await tempDir();
+    let resumeOption: unknown;
+    const runtime = fakeRuntime({
+      ensureSession: async (_binding, options) => {
+        resumeOption = options?.resume;
+        return {
+          bindingId: "binding-1",
+          machineId: "test-machine",
+          projectPath: dir,
+          tmuxSession: "codex-test",
+          lastSeenAt: new Date().toISOString()
+        };
+      }
+    });
+    const config = testConfig({ dataDir: dir, pathAllowlist: [] });
+    const registry = new BindingRegistry(
+      config,
+      new JsonFileStore<BindingsDocument>(join(dir, "bindings.json"), emptyBindings)
+    );
+    const conversation = {
+      provider: "discord" as const,
+      workspaceId: "guild:1",
+      conversationId: "channel:2"
+    };
+    await registry.bind({ conversation, projectPath: dir });
+    const router = newTestRouter(dir, config, registry, new ProjectPathGuard([]), runtime);
+
+    await router.handle({ conversation, actor: { id: "user-1" }, command: "new", args: {} });
+
+    expect(resumeOption).toBe("never");
   });
 
   it("serializes sends for the same bound project", async () => {

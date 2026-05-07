@@ -42,6 +42,7 @@ describe("Discord slash commands", () => {
     );
 
     const send = options?.find((option) => option.name === "send");
+    expect(options?.some((option) => option.name === "new")).toBe(true);
     expect(send?.options).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -91,7 +92,7 @@ describe("Discord slash commands", () => {
 
   it("builds Discord button payloads for outbound actions", () => {
     const payload = toDiscordPayload("Confirm this", [
-      { id: "confirm:ABC123", label: "Confirm", style: "success" }
+      { id: "confirm:ABC123", label: "确认", style: "success" }
     ]);
 
     expect(typeof payload).toBe("object");
@@ -101,7 +102,7 @@ describe("Discord slash commands", () => {
         components: [
           {
             custom_id: "codex:confirm:ABC123",
-            label: "Confirm",
+            label: "确认",
             style: 3
           }
         ]

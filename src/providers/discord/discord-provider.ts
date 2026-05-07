@@ -280,7 +280,6 @@ export class DiscordProviderAdapter {
       }
 
       await reactToMessage(message, MESSAGE_STATUS_REACTIONS.thinking);
-      await reactToMessage(message, MESSAGE_STATUS_REACTIONS.executing);
       const sink = messageProgressSink(message);
       const outbound = await this.commandHandler({
         conversation,
@@ -291,8 +290,12 @@ export class DiscordProviderAdapter {
         messageId: message.id
       }, sink);
       await sink.finalize(outbound);
+      await removeMessageReaction(message, MESSAGE_STATUS_REACTIONS.thinking);
+      await removeMessageReaction(message, MESSAGE_STATUS_REACTIONS.executing);
       await reactToMessage(message, MESSAGE_STATUS_REACTIONS.done);
     } catch (error) {
+      await removeMessageReaction(message, MESSAGE_STATUS_REACTIONS.thinking);
+      await removeMessageReaction(message, MESSAGE_STATUS_REACTIONS.executing);
       await reactToMessage(message, MESSAGE_STATUS_REACTIONS.failed);
       await replyToMessageSafely(message, {
         kind: "error",
@@ -366,6 +369,7 @@ export function buildCodexSlashCommands() {
       .addSubcommand((subcommand) => subcommand.setName("status").setDescription("查看当前项目状态"))
       .addSubcommand((subcommand) => subcommand.setName("start").setDescription("启动当前项目的 Codex 会话"))
       .addSubcommand((subcommand) => subcommand.setName("resume").setDescription("恢复或接入当前项目会话"))
+      .addSubcommand((subcommand) => subcommand.setName("new").setDescription("启动全新的 Codex 会话，不接回旧记录"))
       .addSubcommand((subcommand) =>
         subcommand.setName("pin").setDescription("让当前项目会话保持驻留")
       )
@@ -408,6 +412,11 @@ async function reactToMessage(message: Message, emoji: string): Promise<void> {
   await message.react(emoji).catch(() => undefined);
 }
 
+async function removeMessageReaction(message: Message, emoji: string): Promise<void> {
+  const reaction = message.reactions.cache.get(emoji);
+  await reaction?.users.remove().catch(() => undefined);
+}
+
 async function replyToMessageSafely(message: Message, outbound: OutboundMessage): Promise<void> {
   const [first, ...rest] = formatOutboundParts(outbound);
   try {
@@ -429,6 +438,9 @@ function messageProgressSink(message: Message): OutboundSink & { finalize(messag
   let primary: Message | undefined;
   return {
     update: async (outbound) => {
+      if (outbound.kind === "summary" || outbound.title?.includes("Running")) {
+        await reactToMessage(message, MESSAGE_STATUS_REACTIONS.executing);
+      }
       const first = formatOutboundParts(outbound)[0] ?? "";
       if (!primary) {
         primary = await message.reply(toDiscordPayload(first, outbound.actions));
